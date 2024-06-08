@@ -1,0 +1,24 @@
+{
+  "originHash" : "aac7002e528a5d3f14e5ca37157d804ca4052820f53ee949ba53aed81f9fe959",
+  "pins" : [
+    {
+      "identity" : "komponents",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/katagaki/Komponents",
+      "state" : {
+        "branch" : "main",
+        "revision" : "a3f43f2cf3aceca8a83925dfcc0cb9dd00667f86"
+      }
+    },
+    {
+      "identity" : "swiftwhisper",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/exPHAT/SwiftWhisper.git",
+      "state" : {
+        "revision" : "a192004db08de7c6eaa169eede77f1625e7d23fb",
+        "version" : "1.2.0"
+      }
+    }
+  ],
+  "version" : 3
+}

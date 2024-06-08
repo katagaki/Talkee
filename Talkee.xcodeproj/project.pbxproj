@@ -8,19 +8,23 @@
 
 /* Begin PBXBuildFile section */
 		E4A734792C14286700ECC3B4 /* TalkeeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A734782C14286700ECC3B4 /* TalkeeApp.swift */; };
-		E4A7347B2C14286700ECC3B4 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A7347A2C14286700ECC3B4 /* ContentView.swift */; };
-		E4A7347D2C14286700ECC3B4 /* Item.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A7347C2C14286700ECC3B4 /* Item.swift */; };
+		E4A7347B2C14286700ECC3B4 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A7347A2C14286700ECC3B4 /* MainTabView.swift */; };
 		E4A7347F2C14286800ECC3B4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4A7347E2C14286800ECC3B4 /* Assets.xcassets */; };
-		E4A734822C14286800ECC3B4 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E4A734812C14286800ECC3B4 /* Preview Assets.xcassets */; };
+		E4A7348A2C1428AA00ECC3B4 /* SwiftWhisper in Frameworks */ = {isa = PBXBuildFile; productRef = E4A734892C1428AA00ECC3B4 /* SwiftWhisper */; };
+		E4A7348C2C1429E300ECC3B4 /* TalkNowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4A7348B2C1429E300ECC3B4 /* TalkNowView.swift */; };
+		E4A734912C14302F00ECC3B4 /* Komponents in Frameworks */ = {isa = PBXBuildFile; productRef = E4A734902C14302F00ECC3B4 /* Komponents */; };
+		E4A734932C14322B00ECC3B4 /* ggml-small.en.bin in Resources */ = {isa = PBXBuildFile; fileRef = E4A734922C14322B00ECC3B4 /* ggml-small.en.bin */; };
+		E4A734972C1433B300ECC3B4 /* ggml-small.en-encoder.mlmodelc in Resources */ = {isa = PBXBuildFile; fileRef = E4A734962C1433B300ECC3B4 /* ggml-small.en-encoder.mlmodelc */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		E4A734752C14286700ECC3B4 /* Talkee.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Talkee.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4A734782C14286700ECC3B4 /* TalkeeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalkeeApp.swift; sourceTree = "<group>"; };
-		E4A7347A2C14286700ECC3B4 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		E4A7347C2C14286700ECC3B4 /* Item.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Item.swift; sourceTree = "<group>"; };
+		E4A7347A2C14286700ECC3B4 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		E4A7347E2C14286800ECC3B4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		E4A734812C14286800ECC3B4 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		E4A7348B2C1429E300ECC3B4 /* TalkNowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TalkNowView.swift; sourceTree = "<group>"; };
+		E4A734922C14322B00ECC3B4 /* ggml-small.en.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "ggml-small.en.bin"; sourceTree = "<group>"; };
+		E4A734962C1433B300ECC3B4 /* ggml-small.en-encoder.mlmodelc */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = "ggml-small.en-encoder.mlmodelc"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -28,6 +32,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E4A734912C14302F00ECC3B4 /* Komponents in Frameworks */,
+				E4A7348A2C1428AA00ECC3B4 /* SwiftWhisper in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,21 +59,14 @@
 		E4A734772C14286700ECC3B4 /* Talkee */ = {
 			isa = PBXGroup;
 			children = (
-				E4A734782C14286700ECC3B4 /* TalkeeApp.swift */,
-				E4A7347A2C14286700ECC3B4 /* ContentView.swift */,
-				E4A7347C2C14286700ECC3B4 /* Item.swift */,
 				E4A7347E2C14286800ECC3B4 /* Assets.xcassets */,
-				E4A734802C14286800ECC3B4 /* Preview Content */,
+				E4A734922C14322B00ECC3B4 /* ggml-small.en.bin */,
+				E4A734962C1433B300ECC3B4 /* ggml-small.en-encoder.mlmodelc */,
+				E4A734782C14286700ECC3B4 /* TalkeeApp.swift */,
+				E4A7347A2C14286700ECC3B4 /* MainTabView.swift */,
+				E4A7348B2C1429E300ECC3B4 /* TalkNowView.swift */,
 			);
 			path = Talkee;
-			sourceTree = "<group>";
-		};
-		E4A734802C14286800ECC3B4 /* Preview Content */ = {
-			isa = PBXGroup;
-			children = (
-				E4A734812C14286800ECC3B4 /* Preview Assets.xcassets */,
-			);
-			path = "Preview Content";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -86,6 +85,10 @@
 			dependencies = (
 			);
 			name = Talkee;
+			packageProductDependencies = (
+				E4A734892C1428AA00ECC3B4 /* SwiftWhisper */,
+				E4A734902C14302F00ECC3B4 /* Komponents */,
+			);
 			productName = Talkee;
 			productReference = E4A734752C14286700ECC3B4 /* Talkee.app */;
 			productType = "com.apple.product-type.application";
@@ -114,6 +117,10 @@
 				Base,
 			);
 			mainGroup = E4A7346C2C14286700ECC3B4;
+			packageReferences = (
+				E4A734882C1428AA00ECC3B4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */,
+				E4A7348F2C14302F00ECC3B4 /* XCRemoteSwiftPackageReference "Komponents" */,
+			);
 			productRefGroup = E4A734762C14286700ECC3B4 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -128,7 +135,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E4A734822C14286800ECC3B4 /* Preview Assets.xcassets in Resources */,
+				E4A734972C1433B300ECC3B4 /* ggml-small.en-encoder.mlmodelc in Resources */,
+				E4A734932C14322B00ECC3B4 /* ggml-small.en.bin in Resources */,
 				E4A7347F2C14286800ECC3B4 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -140,8 +148,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E4A7347B2C14286700ECC3B4 /* ContentView.swift in Sources */,
-				E4A7347D2C14286700ECC3B4 /* Item.swift in Sources */,
+				E4A7348C2C1429E300ECC3B4 /* TalkNowView.swift in Sources */,
+				E4A7347B2C14286700ECC3B4 /* MainTabView.swift in Sources */,
 				E4A734792C14286700ECC3B4 /* TalkeeApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -275,10 +283,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"Talkee/Preview Content\"";
 				DEVELOPMENT_TEAM = YYM4Z6MU8F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Talkee uses your microphone to transcribe speech picked up from it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -304,10 +312,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_ASSET_PATHS = "\"Talkee/Preview Content\"";
 				DEVELOPMENT_TEAM = YYM4Z6MU8F;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Talkee uses your microphone to transcribe speech picked up from it.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -348,6 +356,38 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		E4A734882C1428AA00ECC3B4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/exPHAT/SwiftWhisper.git";
+			requirement = {
+				kind = upToNextMinorVersion;
+				minimumVersion = 1.2.0;
+			};
+		};
+		E4A7348F2C14302F00ECC3B4 /* XCRemoteSwiftPackageReference "Komponents" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/katagaki/Komponents";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		E4A734892C1428AA00ECC3B4 /* SwiftWhisper */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4A734882C1428AA00ECC3B4 /* XCRemoteSwiftPackageReference "SwiftWhisper" */;
+			productName = SwiftWhisper;
+		};
+		E4A734902C14302F00ECC3B4 /* Komponents */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E4A7348F2C14302F00ECC3B4 /* XCRemoteSwiftPackageReference "Komponents" */;
+			productName = Komponents;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = E4A7346D2C14286700ECC3B4 /* Project object */;
 }
