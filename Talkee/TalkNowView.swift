@@ -18,11 +18,18 @@ struct TalkNowView: View {
     @State var modelManager = WhisperModelManager.shared
     @State var transcriptManager = TranscriptManager.shared
     @State var audioFrames: [Float] = []
-    @State var transcribedText: [Segment] = []
+    @State var liveSegments: [Segment] = []
+    @State var finalizedSegments: [Segment] = []
     @State var isRecording = false
     @State var isTranscribing = false
+    @State var isFinalizing = false
     @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
     @State var savedTranscript: Transcript?
+    @State var transcriptionTask: Task<Void, Never>?
+
+    var displaySegments: [Segment] {
+        finalizedSegments + liveSegments
+    }
 
     var body: some View {
         NavigationStack {
@@ -69,7 +76,7 @@ struct TalkNowView: View {
                 case .downloading(let progress):
                     Section {
                         VStack(spacing: 12) {
-                            Text("Downloading model…")
+                            Text("Downloading model\u{2026}")
                                 .font(.headline)
                             ProgressView(value: progress)
                                 .progressViewStyle(.linear)
@@ -88,7 +95,7 @@ struct TalkNowView: View {
                     Section {
                         HStack {
                             Spacer()
-                            ProgressView("Loading model…")
+                            ProgressView("Loading model\u{2026}")
                             Spacer()
                         }
                         .padding(.vertical)
@@ -96,32 +103,40 @@ struct TalkNowView: View {
 
                 case .ready:
                     Section {
-                        Button {
-                            if isRecording {
+                        if isRecording {
+                            Button {
                                 stopRecording()
-                            } else {
-                                Task { await startTranscription() }
+                            } label: {
+                                Label("Stop Recording", systemImage: "stop.circle.fill")
+                                    .foregroundStyle(.red)
                             }
-                        } label: {
-                            Label(
-                                isRecording ? "Stop Recording" : "Start Transcribing",
-                                systemImage: isRecording ? "stop.circle.fill" : "mic"
-                            )
-                        }
-                        .disabled(isTranscribing)
 
-                        if isTranscribing {
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 8, height: 8)
+                                Text(isTranscribing ? "Recording & transcribing\u{2026}" : "Recording\u{2026}")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if isFinalizing {
                             HStack {
                                 Spacer()
-                                ProgressView("Transcribing…")
+                                ProgressView("Finalizing transcription\u{2026}")
                                 Spacer()
+                            }
+                        } else {
+                            Button {
+                                startRecording()
+                            } label: {
+                                Label("Start Transcribing", systemImage: "mic")
                             }
                         }
                     }
 
-                    if !transcribedText.isEmpty {
+                    if !displaySegments.isEmpty {
                         Section("Transcription") {
-                            ForEach(transcribedText, id: \.startTime) { segment in
+                            ForEach(Array(displaySegments.enumerated()), id: \.offset) { _, segment in
                                 VStack(alignment: .leading) {
                                     Text("\(formatTime(segment.startTime)) \u{2013} \(formatTime(segment.endTime))")
                                         .font(.caption)
@@ -131,20 +146,23 @@ struct TalkNowView: View {
                                 }
                             }
                         }
+                    }
 
+                    if !displaySegments.isEmpty && !isRecording && !isFinalizing {
                         Section {
                             if let saved = savedTranscript {
                                 NavigationLink("View Saved Transcript", destination: TranscriptDetailView(transcript: saved))
                             } else {
                                 Button("Save Transcript") {
                                     savedTranscript = transcriptManager.saveTranscript(
-                                        segments: transcribedText,
+                                        segments: displaySegments,
                                         modelVariant: modelManager.selectedVariant
                                     )
                                 }
                             }
                             Button("Clear", role: .destructive) {
-                                transcribedText.removeAll()
+                                finalizedSegments.removeAll()
+                                liveSegments.removeAll()
                                 savedTranscript = nil
                             }
                         }
@@ -188,8 +206,10 @@ struct TalkNowView: View {
         return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 
-    func startTranscription() async {
+    func startRecording() {
         audioFrames.removeAll()
+        liveSegments.removeAll()
+        savedTranscript = nil
         isRecording = true
 
         let inputNode = audioEngine.inputNode
@@ -217,9 +237,33 @@ struct TalkNowView: View {
             return
         }
 
-        try? await Task.sleep(for: .seconds(5))
-        if isRecording {
-            stopRecording()
+        // Start the live transcription loop
+        transcriptionTask = Task {
+            await liveTranscriptionLoop()
+        }
+    }
+
+    func liveTranscriptionLoop() async {
+        guard let whisper = modelManager.whisper else { return }
+
+        // Wait for enough audio to accumulate before first transcription
+        try? await Task.sleep(for: .seconds(2))
+
+        while isRecording && !Task.isCancelled {
+            let currentFrames = audioFrames
+            guard !currentFrames.isEmpty else {
+                try? await Task.sleep(for: .seconds(1))
+                continue
+            }
+
+            isTranscribing = true
+            if let segments = try? await whisper.transcribe(audioFrames: currentFrames) {
+                liveSegments = segments
+            }
+            isTranscribing = false
+
+            // Wait before next transcription cycle
+            try? await Task.sleep(for: .seconds(3))
         }
     }
 
@@ -229,15 +273,21 @@ struct TalkNowView: View {
         audioEngine.inputNode.removeTap(onBus: 0)
         isRecording = false
 
-        guard let whisper = modelManager.whisper else { return }
-        let framesToTranscribe = audioFrames
+        // Cancel the live loop
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
 
-        isTranscribing = true
+        guard let whisper = modelManager.whisper else { return }
+        let allFrames = audioFrames
+
+        // Do one final transcription pass on the complete audio
+        isFinalizing = true
         Task {
-            if let segments = try? await whisper.transcribe(audioFrames: framesToTranscribe) {
-                transcribedText.append(contentsOf: segments)
+            if let segments = try? await whisper.transcribe(audioFrames: allFrames) {
+                liveSegments.removeAll()
+                finalizedSegments.append(contentsOf: segments)
             }
-            isTranscribing = false
+            isFinalizing = false
         }
     }
 }
