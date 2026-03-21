@@ -15,52 +15,152 @@ struct TalkNowView: View {
     let audioFormat = AVAudioFormat(standardFormatWithSampleRate: 16000, channels: 1)!
     let audioEngine = AVAudioEngine()
 
-    @State var whisperModel: Whisper?
+    @State var modelManager = WhisperModelManager.shared
     @State var audioFrames: [Float] = []
     @State var transcribedText: [Segment] = []
+    @State var isRecording = false
+    @State var isTranscribing = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    if whisperModel == nil {
-                        Button("Load Model", systemImage: "bubbles.and.sparkles", action: loadModel)
-                    } else {
-                        Button("Start Transcribing", systemImage: "mic") {
-                            Task {
-                                await startTranscription()
+                switch modelManager.state {
+                case .notDownloaded:
+                    Section {
+                        VStack(spacing: 12) {
+                            Image(systemName: "arrow.down.circle")
+                                .font(.largeTitle)
+                                .foregroundStyle(.secondary)
+                            Text("Whisper model required")
+                                .font(.headline)
+                            Text("Download the speech recognition model to get started (~466 MB).")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Download Model") {
+                                modelManager.downloadModel()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical)
+                    }
+
+                case .downloading(let progress):
+                    Section {
+                        VStack(spacing: 12) {
+                            Text("Downloading model…")
+                                .font(.headline)
+                            ProgressView(value: progress)
+                                .progressViewStyle(.linear)
+                            Text("\(Int(progress * 100))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Cancel", role: .destructive) {
+                                modelManager.cancelDownload()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.vertical)
+                    }
+
+                case .downloaded, .loading:
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Loading model…")
+                            Spacer()
+                        }
+                        .padding(.vertical)
+                    }
+
+                case .ready:
+                    Section {
+                        Button {
+                            if isRecording {
+                                stopRecording()
+                            } else {
+                                Task { await startTranscription() }
+                            }
+                        } label: {
+                            Label(
+                                isRecording ? "Stop Recording" : "Start Transcribing",
+                                systemImage: isRecording ? "stop.circle.fill" : "mic"
+                            )
+                        }
+                        .disabled(isTranscribing)
+
+                        if isTranscribing {
+                            HStack {
+                                Spacer()
+                                ProgressView("Transcribing…")
+                                Spacer()
                             }
                         }
                     }
-                }
-                Section {
-                    ForEach(transcribedText, id: \.startTime) { segment in
-                        VStack(alignment: .leading) {
-                            Text("\(segment.startTime) - \(segment.endTime)")
-                                .font(.caption)
-                            Text(segment.text)
-                                .font(.body)
+
+                    if !transcribedText.isEmpty {
+                        Section("Transcription") {
+                            ForEach(transcribedText, id: \.startTime) { segment in
+                                VStack(alignment: .leading) {
+                                    Text("\(formatTime(segment.startTime)) – \(formatTime(segment.endTime))")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                    Text(segment.text.trimmingCharacters(in: .whitespaces))
+                                        .font(.body)
+                                }
+                            }
                         }
-                        .frame(alignment: .center)
+
+                        Section {
+                            Button("Clear Transcription", role: .destructive) {
+                                transcribedText.removeAll()
+                            }
+                        }
+                    }
+
+                case .error(let message):
+                    Section {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.largeTitle)
+                                .foregroundStyle(.red)
+                            Text("Error")
+                                .font(.headline)
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Try Again") {
+                                modelManager.resetError()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical)
                     }
                 }
             }
+            .navigationTitle("Talk Now")
             .onAppear {
-                loadModel()
+                if modelManager.state == .downloaded {
+                    Task { await modelManager.loadModel() }
+                }
             }
         }
     }
 
-    func loadModel() {
-        if let mediumModelPath = Bundle.main.path(forResource: "ggml-small.en", ofType: "bin") {
-            whisperModel = Whisper(fromFileURL: URL(fileURLWithPath: mediumModelPath))
-        } else {
-            print("Whisper model does not exist!")
-        }
+    func formatTime(_ time: Int) -> String {
+        let seconds = time / 1000
+        let minutes = seconds / 60
+        let remainingSeconds = seconds % 60
+        return String(format: "%d:%02d", minutes, remainingSeconds)
     }
 
     func startTranscription() async {
-        // Initialize audio engine
+        audioFrames.removeAll()
+        isRecording = true
+
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(
@@ -71,7 +171,6 @@ struct TalkNowView: View {
                                   channels: inputFormat.channelCount,
                                   interleaved: true)
         ) { buffer, _ in
-            debugPrint("Received buffer of size \(buffer.frameLength)")
             let audioFramesFromBuffer = Array(UnsafeBufferPointer(
                 start: buffer.floatChannelData![0],
                 count: Int(buffer.frameLength)
@@ -79,24 +178,35 @@ struct TalkNowView: View {
             audioFrames.append(contentsOf: audioFramesFromBuffer)
         }
         do {
-            debugPrint("Starting audio engine")
             try AVAudioSession.sharedInstance().setCategory(.record)
             audioEngine.prepare()
             try audioEngine.start()
         } catch {
-            debugPrint("Failed to start recording: \(error)")
+            isRecording = false
+            return
         }
-        if audioEngine.isRunning {
-            try? await Task.sleep(for: .seconds(5))
-            if let whisperModel {
-                debugPrint("Stopping audio engine")
-                self.audioEngine.stop()
-                inputNode.removeTap(onBus: 0)
-                debugPrint("Transcribing")
-                if let segments = try? await whisperModel.transcribe(audioFrames: audioFrames) {
-                    transcribedText.append(contentsOf: segments)
-                }
+
+        try? await Task.sleep(for: .seconds(5))
+        if isRecording {
+            stopRecording()
+        }
+    }
+
+    func stopRecording() {
+        guard audioEngine.isRunning else { return }
+        audioEngine.stop()
+        audioEngine.inputNode.removeTap(onBus: 0)
+        isRecording = false
+
+        guard let whisper = modelManager.whisper else { return }
+        let framesToTranscribe = audioFrames
+
+        isTranscribing = true
+        Task {
+            if let segments = try? await whisper.transcribe(audioFrames: framesToTranscribe) {
+                transcribedText.append(contentsOf: segments)
             }
+            isTranscribing = false
         }
     }
 }
