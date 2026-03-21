@@ -1,2 +1,5 @@
+xcuserdata/
+.DS_Store
+
 Talkee/ggml-small.en.bin
 Talkee/ggml-small.en-encoder.mlmodelc/

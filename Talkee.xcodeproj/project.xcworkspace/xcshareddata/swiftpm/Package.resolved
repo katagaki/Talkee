@@ -1,15 +1,6 @@
 {
-  "originHash" : "04aff4d3791ad2896cd86913c4808231476a194e3fc57b2ac9b0e136149baeff",
+  "originHash" : "41cd787ae94a1ddbb4a070e37d95a16b3efdddf1926aa516047a63121a003549",
   "pins" : [
-    {
-      "identity" : "komponents",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/katagaki/Komponents",
-      "state" : {
-        "branch" : "main",
-        "revision" : "a3f43f2cf3aceca8a83925dfcc0cb9dd00667f86"
-      }
-    },
     {
       "identity" : "swiftwhisper",
       "kind" : "remoteSourceControl",
