@@ -15,6 +15,10 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Talk Now", systemImage: "mic.fill")
                 }
+            TranscriptListView()
+                .tabItem {
+                    Label("Transcripts", systemImage: "doc.text")
+                }
             SettingsView()
                 .tabItem {
                     Label("Settings", systemImage: "gear")

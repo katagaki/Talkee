@@ -16,11 +16,13 @@ struct TalkNowView: View {
     let audioEngine = AVAudioEngine()
 
     @State var modelManager = WhisperModelManager.shared
+    @State var transcriptManager = TranscriptManager.shared
     @State var audioFrames: [Float] = []
     @State var transcribedText: [Segment] = []
     @State var isRecording = false
     @State var isTranscribing = false
     @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
+    @State var savedTranscript: Transcript?
 
     var body: some View {
         NavigationStack {
@@ -121,7 +123,7 @@ struct TalkNowView: View {
                         Section("Transcription") {
                             ForEach(transcribedText, id: \.startTime) { segment in
                                 VStack(alignment: .leading) {
-                                    Text("\(formatTime(segment.startTime)) – \(formatTime(segment.endTime))")
+                                    Text("\(formatTime(segment.startTime)) \u{2013} \(formatTime(segment.endTime))")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                     Text(segment.text.trimmingCharacters(in: .whitespaces))
@@ -131,8 +133,19 @@ struct TalkNowView: View {
                         }
 
                         Section {
-                            Button("Clear Transcription", role: .destructive) {
+                            if let saved = savedTranscript {
+                                NavigationLink("View Saved Transcript", destination: TranscriptDetailView(transcript: saved))
+                            } else {
+                                Button("Save Transcript") {
+                                    savedTranscript = transcriptManager.saveTranscript(
+                                        segments: transcribedText,
+                                        modelVariant: modelManager.selectedVariant
+                                    )
+                                }
+                            }
+                            Button("Clear", role: .destructive) {
                                 transcribedText.removeAll()
+                                savedTranscript = nil
                             }
                         }
                     }
