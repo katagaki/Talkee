@@ -20,6 +20,7 @@ struct TalkNowView: View {
     @State var transcribedText: [Segment] = []
     @State var isRecording = false
     @State var isTranscribing = false
+    @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
 
     var body: some View {
         NavigationStack {
@@ -33,17 +34,34 @@ struct TalkNowView: View {
                                 .foregroundStyle(.secondary)
                             Text("Whisper model required")
                                 .font(.headline)
-                            Text("Download the speech recognition model to get started (~466 MB).")
+                            Text("Choose a model variant and download it to get started.")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
-                            Button("Download Model") {
-                                modelManager.downloadModel()
-                            }
-                            .buttonStyle(.borderedProminent)
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical)
+                    }
+
+                    Section("Select Model") {
+                        Picker("Model", selection: $selectedVariant) {
+                            ForEach(WhisperModelVariant.allCases) { variant in
+                                Text("\(variant.displayName) (\(variant.sizeDescription))")
+                                    .tag(variant)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
+
+                    Section {
+                        Button {
+                            modelManager.downloadModel(selectedVariant)
+                        } label: {
+                            Label("Download \(selectedVariant.displayName)", systemImage: "arrow.down.circle.fill")
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .frame(maxWidth: .infinity)
                     }
 
                 case .downloading(let progress):

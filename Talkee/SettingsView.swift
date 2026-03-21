@@ -10,18 +10,18 @@ import SwiftUI
 struct SettingsView: View {
 
     @State var modelManager = WhisperModelManager.shared
+    @State var variantToDelete: WhisperModelVariant?
     @State var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Whisper Model") {
+                Section("Current Model") {
+                    LabeledContent("Selected", value: modelManager.selectedVariant.displayName)
+
                     switch modelManager.state {
                     case .notDownloaded:
                         LabeledContent("Status", value: "Not Downloaded")
-                        Button("Download Model") {
-                            modelManager.downloadModel()
-                        }
 
                     case .downloading(let progress):
                         VStack(alignment: .leading, spacing: 8) {
@@ -35,12 +35,11 @@ struct SettingsView: View {
                             modelManager.cancelDownload()
                         }
 
-                    case .downloaded, .loading, .ready:
-                        LabeledContent("Status", value: modelManager.state == .ready ? "Ready" : "Downloaded")
-                        LabeledContent("Model", value: "ggml-small.en")
-                        Button("Delete Model", role: .destructive) {
-                            showDeleteConfirmation = true
-                        }
+                    case .downloaded, .loading:
+                        LabeledContent("Status", value: "Loading…")
+
+                    case .ready:
+                        LabeledContent("Status", value: "Ready")
 
                     case .error(let message):
                         LabeledContent("Status", value: "Error")
@@ -49,7 +48,70 @@ struct SettingsView: View {
                             .foregroundStyle(.red)
                         Button("Retry Download") {
                             modelManager.resetError()
-                            modelManager.downloadModel()
+                            modelManager.downloadModel(modelManager.selectedVariant)
+                        }
+                    }
+                }
+
+                Section("Downloaded Models") {
+                    let downloaded = modelManager.downloadedVariants
+                    if downloaded.isEmpty {
+                        Text("No models downloaded")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(downloaded) { variant in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(variant.displayName)
+                                    Text(variant.sizeDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if variant == modelManager.selectedVariant && modelManager.state == .ready {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.green)
+                                } else if variant != modelManager.selectedVariant {
+                                    Button("Use") {
+                                        Task { await modelManager.switchModel(to: variant) }
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button("Delete", role: .destructive) {
+                                    variantToDelete = variant
+                                    showDeleteConfirmation = true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Section("Available Models") {
+                    let notDownloaded = WhisperModelVariant.allCases.filter { !modelManager.isModelDownloaded($0) }
+                    if notDownloaded.isEmpty {
+                        Text("All models downloaded")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(notDownloaded) { variant in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(variant.displayName)
+                                    Text(variant.sizeDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if case .notDownloaded = modelManager.state {
+                                    Button("Download") {
+                                        modelManager.downloadModel(variant)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                            }
                         }
                     }
                 }
@@ -61,15 +123,17 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .confirmationDialog(
-                "Delete Whisper Model?",
+                "Delete \(variantToDelete?.displayName ?? "model")?",
                 isPresented: $showDeleteConfirmation,
                 titleVisibility: .visible
             ) {
                 Button("Delete", role: .destructive) {
-                    modelManager.deleteModel()
+                    if let variant = variantToDelete {
+                        modelManager.deleteModel(variant)
+                    }
                 }
             } message: {
-                Text("You will need to download the model again to use transcription.")
+                Text("You will need to download this model again to use it.")
             }
         }
     }
