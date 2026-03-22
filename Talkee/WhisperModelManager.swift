@@ -8,6 +8,43 @@
 import Foundation
 import SwiftWhisper
 
+enum WhisperModelLanguage: String, CaseIterable, Identifiable {
+    case english = "en"
+    case japanese = "ja"
+    case chinese = "zh"
+    case korean = "ko"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .english: "English"
+        case .japanese: "Japanese"
+        case .chinese: "Chinese"
+        case .korean: "Korean"
+        }
+    }
+
+    var flag: String {
+        switch self {
+        case .english: "\u{1F1FA}\u{1F1F8}"
+        case .japanese: "\u{1F1EF}\u{1F1F5}"
+        case .chinese: "\u{1F1E8}\u{1F1F3}"
+        case .korean: "\u{1F1F0}\u{1F1F7}"
+        }
+    }
+
+    /// Models suitable for this language, ordered by quality (smallest to largest)
+    var supportedVariants: [WhisperModelVariant] {
+        switch self {
+        case .english:
+            return [.tinyEn, .tiny, .baseEn, .base, .smallEn, .small, .mediumEn, .medium, .largeV3]
+        case .japanese, .chinese, .korean:
+            return [.tiny, .base, .small, .medium, .largeV3]
+        }
+    }
+}
+
 enum WhisperModelVariant: String, CaseIterable, Identifiable {
     case tinyEn = "tiny.en"
     case tiny = "tiny"
@@ -21,6 +58,15 @@ enum WhisperModelVariant: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    var isEnglishOnly: Bool {
+        switch self {
+        case .tinyEn, .baseEn, .smallEn, .mediumEn: true
+        default: false
+        }
+    }
+
+    var isMultilingual: Bool { !isEnglishOnly }
+
     var displayName: String {
         switch self {
         case .tinyEn: "Tiny (English)"
@@ -32,6 +78,16 @@ enum WhisperModelVariant: String, CaseIterable, Identifiable {
         case .mediumEn: "Medium (English)"
         case .medium: "Medium (Multilingual)"
         case .largeV3: "Large v3 (Multilingual)"
+        }
+    }
+
+    var qualityName: String {
+        switch self {
+        case .tinyEn, .tiny: "Tiny"
+        case .baseEn, .base: "Base"
+        case .smallEn, .small: "Small"
+        case .mediumEn, .medium: "Medium"
+        case .largeV3: "Large v3"
         }
     }
 

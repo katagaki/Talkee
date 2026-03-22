@@ -23,6 +23,7 @@ struct TalkNowView: View {
     @State var isRecording = false
     @State var isTranscribing = false
     @State var isFinalizing = false
+    @State var selectedLanguage: WhisperModelLanguage = .english
     @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
     @State var savedTranscript: Transcript?
     @State var transcriptionTask: Task<Void, Never>?
@@ -52,11 +53,36 @@ struct TalkNowView: View {
                         .padding(.vertical)
                     }
 
-                    Section("Select Model") {
+                    Section("Language") {
+                        Picker("Language", selection: $selectedLanguage) {
+                            ForEach(WhisperModelLanguage.allCases) { language in
+                                Text("\(language.flag) \(language.displayName)")
+                                    .tag(language)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                        .onChange(of: selectedLanguage) {
+                            // Auto-select a reasonable default model for the language
+                            let variants = selectedLanguage.supportedVariants
+                            if !variants.contains(selectedVariant) {
+                                // Pick the smallest English-only model for English,
+                                // or the smallest multilingual model for other languages
+                                selectedVariant = variants.first ?? .small
+                            }
+                        }
+                    }
+
+                    Section("Model Size") {
                         Picker("Model", selection: $selectedVariant) {
-                            ForEach(WhisperModelVariant.allCases) { variant in
-                                Text("\(variant.displayName) (\(variant.sizeDescription))")
-                                    .tag(variant)
+                            ForEach(selectedLanguage.supportedVariants) { variant in
+                                HStack {
+                                    Text(variant.qualityName)
+                                    Spacer()
+                                    Text(variant.sizeDescription)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .tag(variant)
                             }
                         }
                         .pickerStyle(.inline)

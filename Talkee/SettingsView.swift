@@ -89,27 +89,26 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Available Models") {
-                    let notDownloaded = WhisperModelVariant.allCases.filter { !modelManager.isModelDownloaded($0) }
-                    if notDownloaded.isEmpty {
-                        Text("All models downloaded")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(notDownloaded) { variant in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(variant.displayName)
-                                    Text(variant.sizeDescription)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if case .notDownloaded = modelManager.state {
-                                    Button("Download") {
-                                        modelManager.downloadModel(variant)
+                ForEach(WhisperModelLanguage.allCases) { language in
+                    let notDownloaded = language.supportedVariants.filter { !modelManager.isModelDownloaded($0) }
+                    if !notDownloaded.isEmpty {
+                        Section("\(language.flag) \(language.displayName) Models") {
+                            ForEach(notDownloaded) { variant in
+                                HStack {
+                                    VStack(alignment: .leading) {
+                                        Text(variant.qualityName)
+                                        Text(variant.sizeDescription)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
                                     }
-                                    .buttonStyle(.bordered)
-                                    .controlSize(.small)
+                                    Spacer()
+                                    if case .notDownloaded = modelManager.state {
+                                        Button("Download") {
+                                            modelManager.downloadModel(variant)
+                                        }
+                                        .buttonStyle(.bordered)
+                                        .controlSize(.small)
+                                    }
                                 }
                             }
                         }
