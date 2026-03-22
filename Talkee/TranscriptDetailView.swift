@@ -19,6 +19,11 @@ struct TranscriptDetailView: View {
     @State var isSummarizing = false
     @State var summaryError: String?
 
+    var transcriptDuration: String {
+        guard let last = transcript.segments.last else { return "0:00" }
+        return transcriptManager.formatTime(last.end)
+    }
+
     var body: some View {
         List {
             Section("Title") {
@@ -42,7 +47,7 @@ struct TranscriptDetailView: View {
             Section("Details") {
                 LabeledContent("Date", value: transcript.formattedDate)
                 LabeledContent("Model", value: transcript.modelName)
-                LabeledContent("Segments", value: "\(transcript.segments.count)")
+                LabeledContent("Duration", value: transcriptDuration)
             }
 
             Section("Transcript") {
@@ -50,15 +55,9 @@ struct TranscriptDetailView: View {
                     TextEditor(text: $editedBody)
                         .frame(minHeight: 200)
                 } else {
-                    ForEach(Array(transcript.segments.enumerated()), id: \.offset) { _, segment in
-                        VStack(alignment: .leading) {
-                            Text("\(transcriptManager.formatTime(segment.start)) \u{2013} \(transcriptManager.formatTime(segment.end))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(segment.text.trimmingCharacters(in: .whitespaces))
-                                .font(.body)
-                        }
-                    }
+                    Text(transcriptManager.fullText(of: transcript))
+                        .font(.body)
+                        .textSelection(.enabled)
                 }
             }
 
@@ -110,13 +109,8 @@ struct TranscriptDetailView: View {
                 }
             } else {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(isEditingBody ? "Done" : "Edit Transcript") {
-                        editedBody = transcript.segments
-                            .map { segment in
-                                let time = "\(transcriptManager.formatTime(segment.start)) \u{2013} \(transcriptManager.formatTime(segment.end))"
-                                return "\(time)\n\(segment.text.trimmingCharacters(in: .whitespaces))"
-                            }
-                            .joined(separator: "\n\n")
+                    Button("Edit Transcript") {
+                        editedBody = transcriptManager.fullText(of: transcript)
                         isEditingBody = true
                     }
                 }
@@ -131,40 +125,12 @@ struct TranscriptDetailView: View {
     }
 
     private func saveBody() {
-        // Parse the edited body back into segments
-        let blocks = editedBody.components(separatedBy: "\n\n")
-        var newSegments: [(start: Int, end: Int, text: String)] = []
-
-        for block in blocks {
-            let lines = block.components(separatedBy: "\n")
-            if lines.count >= 2 {
-                let timeLine = lines[0]
-                let text = lines.dropFirst().joined(separator: "\n")
-                let timeParts = timeLine.components(separatedBy: " \u{2013} ")
-                if timeParts.count == 2 {
-                    let start = parseTime(timeParts[0])
-                    let end = parseTime(timeParts[1])
-                    newSegments.append((start: start, end: end, text: " \(text)"))
-                } else {
-                    // If time parsing fails, keep as text-only segment
-                    newSegments.append((start: 0, end: 0, text: " \(block)"))
-                }
-            } else if !block.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                newSegments.append((start: 0, end: 0, text: " \(block)"))
-            }
-        }
-
-        transcript.segments = newSegments
+        // Store the edited text as a single segment preserving the full duration
+        let start = transcript.segments.first?.start ?? 0
+        let end = transcript.segments.last?.end ?? 0
+        transcript.segments = [(start: start, end: end, text: " \(editedBody)")]
         transcriptManager.updateTranscript(transcript)
         isEditingBody = false
-    }
-
-    private func parseTime(_ str: String) -> Int {
-        let parts = str.components(separatedBy: ":")
-        guard parts.count == 2,
-              let minutes = Int(parts[0]),
-              let seconds = Int(parts[1]) else { return 0 }
-        return (minutes * 60 + seconds) * 1000
     }
 
     @available(iOS 26.0, *)

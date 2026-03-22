@@ -39,6 +39,11 @@ struct TranscriptListView: View {
                                             .font(.subheadline)
                                             .foregroundStyle(.secondary)
                                             .lineLimit(2)
+                                    } else {
+                                        Text(transcriptManager.fullText(of: transcript))
+                                            .font(.subheadline)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
                                     }
                                 }
                             }

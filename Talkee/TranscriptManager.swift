@@ -185,6 +185,26 @@ class TranscriptManager {
             .sorted { $0.date > $1.date }
     }
 
+    func saveTranscript(text: String, engineName: String) -> Transcript {
+        let now = Date()
+        let id = Self.fileNameFormatter.string(from: now)
+        let transcript = Transcript(
+            id: id,
+            title: "",
+            date: now,
+            modelName: engineName,
+            segments: [(start: 0, end: 0, text: " \(text)")],
+            summary: nil
+        )
+
+        let markdown = buildMarkdown(for: transcript)
+        let fileURL = transcriptsDirectory.appendingPathComponent(transcript.fileName)
+        try? markdown.write(to: fileURL, atomically: true, encoding: .utf8)
+
+        loadAllTranscripts()
+        return transcript
+    }
+
     func saveTranscript(segments: [Segment], modelVariant: WhisperModelVariant) -> Transcript {
         let now = Date()
         let id = Self.fileNameFormatter.string(from: now)
