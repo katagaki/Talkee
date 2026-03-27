@@ -43,6 +43,15 @@ enum WhisperModelLanguage: String, CaseIterable, Identifiable {
             return [.tiny, .base, .small, .medium, .largeV3]
         }
     }
+
+    var whisperLanguage: WhisperLanguage {
+        switch self {
+        case .english: .english
+        case .japanese: .japanese
+        case .chinese: .chinese
+        case .korean: .korean
+        }
+    }
 }
 
 enum WhisperModelVariant: String, CaseIterable, Identifiable {
@@ -140,12 +149,18 @@ class WhisperModelManager {
     }
 
     private static let selectedVariantKey = "selectedWhisperModelVariant"
+    private static let selectedLanguageKey = "selectedWhisperModelLanguage"
 
     private(set) var state: ModelState = .notDownloaded
     private(set) var whisper: Whisper?
     private(set) var selectedVariant: WhisperModelVariant {
         didSet {
             UserDefaults.standard.set(selectedVariant.rawValue, forKey: Self.selectedVariantKey)
+        }
+    }
+    var selectedLanguage: WhisperModelLanguage {
+        didSet {
+            UserDefaults.standard.set(selectedLanguage.rawValue, forKey: Self.selectedLanguageKey)
         }
     }
 
@@ -176,9 +191,40 @@ class WhisperModelManager {
             selectedVariant = .smallEn
         }
 
+        if let savedLang = UserDefaults.standard.string(forKey: Self.selectedLanguageKey),
+           let language = WhisperModelLanguage(rawValue: savedLang) {
+            selectedLanguage = language
+        } else {
+            selectedLanguage = .english
+        }
+
         if isModelDownloaded(selectedVariant) {
             state = .downloaded
         }
+    }
+
+    func makeParams() -> WhisperParams {
+        let params = WhisperParams(.beamSearch)
+        params.beam_search.beam_size = 5
+        params.language = selectedLanguage.whisperLanguage
+
+        // Temperature fallback: start deterministic, increase on failure
+        params.temperature = 0.0
+        params.temperature_inc = 0.2
+
+        // Suppress blank/silence and non-speech tokens
+        params.suppress_blank = true
+        params.suppress_nst = true
+        params.no_speech_thold = 0.6
+
+        // Entropy/logprob thresholds for decode quality
+        params.entropy_thold = 2.4
+        params.logprob_thold = -1.0
+
+        // Use past transcription context for consistency
+        params.no_context = false
+
+        return params
     }
 
     func downloadModel(_ variant: WhisperModelVariant) {
@@ -262,7 +308,7 @@ class WhisperModelManager {
         }
 
         state = .loading
-        whisper = Whisper(fromFileURL: fileURL)
+        whisper = Whisper(fromFileURL: fileURL, withParams: makeParams())
         state = .ready
     }
 

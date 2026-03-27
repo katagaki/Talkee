@@ -46,7 +46,7 @@ struct TalkNowView: View {
     @State var finalizedSegments: [Segment] = []
     @State var isTranscribing = false
     @State var isFinalizing = false
-    @State var selectedLanguage: WhisperModelLanguage = .english
+    @State var selectedLanguage: WhisperModelLanguage = WhisperModelManager.shared.selectedLanguage
     @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
     @State var whisperTask: Task<Void, Never>?
 
@@ -155,6 +155,7 @@ struct TalkNowView: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
                 .onChange(of: selectedLanguage) {
+                    modelManager.selectedLanguage = selectedLanguage
                     let variants = selectedLanguage.supportedVariants
                     if !variants.contains(selectedVariant) {
                         selectedVariant = variants.first ?? .small
@@ -346,6 +347,12 @@ struct TalkNowView: View {
 
     // MARK: - Whisper Recording
 
+    static let whisperSampleRate: Double = 16000
+    static let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                             sampleRate: whisperSampleRate,
+                                             channels: 1,
+                                             interleaved: false)!
+
     func startWhisperRecording() {
         audioFrames.removeAll()
         liveSegments.removeAll()
@@ -353,19 +360,36 @@ struct TalkNowView: View {
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Install a converter to resample device audio to 16kHz mono for Whisper
+        guard let converter = AVAudioConverter(from: inputFormat, to: Self.whisperFormat) else {
+            isRecording = false
+            return
+        }
+
         inputNode.installTap(
             onBus: 0,
             bufferSize: AVAudioFrameCount(inputFormat.sampleRate),
-            format: AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                  sampleRate: inputFormat.sampleRate,
-                                  channels: inputFormat.channelCount,
-                                  interleaved: true)
+            format: inputFormat
         ) { buffer, _ in
-            let audioFramesFromBuffer = Array(UnsafeBufferPointer(
-                start: buffer.floatChannelData![0],
-                count: Int(buffer.frameLength)
-            ))
-            audioFrames.append(contentsOf: audioFramesFromBuffer)
+            let ratio = Self.whisperSampleRate / inputFormat.sampleRate
+            let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: Self.whisperFormat,
+                                                      frameCapacity: outputFrameCount) else { return }
+
+            var error: NSError?
+            converter.convert(to: outputBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return buffer
+            }
+
+            if error == nil, let channelData = outputBuffer.floatChannelData {
+                let frames = Array(UnsafeBufferPointer(
+                    start: channelData[0],
+                    count: Int(outputBuffer.frameLength)
+                ))
+                self.audioFrames.append(contentsOf: frames)
+            }
         }
         do {
             try AVAudioSession.sharedInstance().setCategory(.record)
