@@ -204,7 +204,7 @@ class WhisperModelManager {
     }
 
     func makeParams() -> WhisperParams {
-        let params = WhisperParams(.beamSearch)
+        let params = WhisperParams(strategy: .beamSearch)
         params.beam_search.beam_size = 5
         params.language = selectedLanguage.whisperLanguage
 
