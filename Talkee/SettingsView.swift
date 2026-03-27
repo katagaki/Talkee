@@ -10,12 +10,22 @@ import SwiftUI
 struct SettingsView: View {
 
     @State var modelManager = WhisperModelManager.shared
+    @AppStorage("selectedTranscriptionEngine") var selectedEngine: String = TranscriptionEngine.dictation.rawValue
     @State var variantToDelete: WhisperModelVariant?
     @State var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
             List {
+                Section("Transcription Engine") {
+                    Picker("Engine", selection: $selectedEngine) {
+                        ForEach(TranscriptionEngine.allCases) { engine in
+                            Label(engine.displayName, systemImage: engine.icon)
+                                .tag(engine.rawValue)
+                        }
+                    }
+                }
+
                 Section("Current Model") {
                     LabeledContent("Selected", value: modelManager.selectedVariant.displayName)
 
@@ -117,7 +127,7 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("Version", value: "1.0")
-                    LabeledContent("Speech Engine", value: "Whisper (OpenAI)")
+                    LabeledContent("Speech Engine", value: (TranscriptionEngine(rawValue: selectedEngine) ?? .dictation).displayName)
                 }
             }
             .navigationTitle("Settings")

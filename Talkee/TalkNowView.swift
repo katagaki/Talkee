@@ -38,9 +38,7 @@ struct TalkNowView: View {
 
     @State var modelManager = WhisperModelManager.shared
     @State var transcriptManager = TranscriptManager.shared
-
-    // Engine selection
-    @State var selectedEngine: TranscriptionEngine = .dictation
+    @AppStorage("selectedTranscriptionEngine") var selectedEngine: String = TranscriptionEngine.dictation.rawValue
 
     // Whisper state
     @State var audioFrames: [Float] = []
@@ -63,8 +61,12 @@ struct TalkNowView: View {
     @State var isRecording = false
     @State var savedTranscript: Transcript?
 
+    var engine: TranscriptionEngine {
+        TranscriptionEngine(rawValue: selectedEngine) ?? .dictation
+    }
+
     var currentTranscriptText: String {
-        switch selectedEngine {
+        switch engine {
         case .whisper:
             let segments = finalizedSegments + liveSegments
             return segments
@@ -82,19 +84,7 @@ struct TalkNowView: View {
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Picker("Engine", selection: $selectedEngine) {
-                        ForEach(TranscriptionEngine.allCases) { engine in
-                            Label(engine.displayName, systemImage: engine.icon)
-                                .tag(engine)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .disabled(isRecording || isFinalizing)
-                }
-
-                switch selectedEngine {
+                switch engine {
                 case .whisper:
                     whisperContent
                 case .dictation:
@@ -126,7 +116,7 @@ struct TalkNowView: View {
             }
             .navigationTitle("Talk Now")
             .onAppear {
-                if selectedEngine == .whisper && modelManager.state == .downloaded {
+                if engine == .whisper && modelManager.state == .downloaded {
                     Task { await modelManager.loadModel() }
                 }
             }
@@ -310,7 +300,7 @@ struct TalkNowView: View {
                     Circle()
                         .fill(.red)
                         .frame(width: 8, height: 8)
-                    Text(selectedEngine == .whisper && isTranscribing
+                    Text(engine == .whisper && isTranscribing
                          ? "Recording & transcribing\u{2026}"
                          : "Recording\u{2026}")
                         .font(.caption)
@@ -337,7 +327,7 @@ struct TalkNowView: View {
     func startRecording() {
         savedTranscript = nil
 
-        switch selectedEngine {
+        switch engine {
         case .whisper:
             startWhisperRecording()
         case .dictation:
@@ -346,7 +336,7 @@ struct TalkNowView: View {
     }
 
     func stopRecording() {
-        switch selectedEngine {
+        switch engine {
         case .whisper:
             stopWhisperRecording()
         case .dictation:
@@ -501,7 +491,7 @@ struct TalkNowView: View {
     // MARK: - Save / Clear
 
     func saveCurrentTranscript() {
-        switch selectedEngine {
+        switch engine {
         case .whisper:
             let segments = finalizedSegments + liveSegments
             savedTranscript = transcriptManager.saveTranscript(
