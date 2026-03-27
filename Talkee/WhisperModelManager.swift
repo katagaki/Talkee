@@ -212,9 +212,8 @@ class WhisperModelManager {
         params.temperature = 0.0
         params.temperature_inc = 0.2
 
-        // Suppress blank/silence and non-speech tokens
+        // Suppress blank/silence segments
         params.suppress_blank = true
-        params.suppress_nst = true
         params.no_speech_thold = 0.6
 
         // Entropy/logprob thresholds for decode quality
