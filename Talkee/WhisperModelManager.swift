@@ -188,7 +188,7 @@ class WhisperModelManager {
            let variant = WhisperModelVariant(rawValue: saved) {
             selectedVariant = variant
         } else {
-            selectedVariant = .smallEn
+            selectedVariant = .largeV3
         }
 
         if let savedLang = UserDefaults.standard.string(forKey: Self.selectedLanguageKey),

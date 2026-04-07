@@ -10,22 +10,12 @@ import SwiftUI
 struct SettingsView: View {
 
     @State var modelManager = WhisperModelManager.shared
-    @AppStorage("selectedTranscriptionEngine") var selectedEngine: String = TranscriptionEngine.dictation.rawValue
     @State var variantToDelete: WhisperModelVariant?
     @State var showDeleteConfirmation = false
 
     var body: some View {
         NavigationStack {
             List {
-                Section("Transcription Engine") {
-                    Picker("Engine", selection: $selectedEngine) {
-                        ForEach(TranscriptionEngine.allCases) { engine in
-                            Label(engine.displayName, systemImage: engine.icon)
-                                .tag(engine.rawValue)
-                        }
-                    }
-                }
-
                 Section("Current Model") {
                     LabeledContent("Selected", value: modelManager.selectedVariant.displayName)
 
@@ -35,7 +25,7 @@ struct SettingsView: View {
 
                     case .downloading(let progress):
                         VStack(alignment: .leading, spacing: 8) {
-                            LabeledContent("Status", value: "Downloading…")
+                            LabeledContent("Status", value: "Downloading\u{2026}")
                             ProgressView(value: progress)
                             Text("\(Int(progress * 100))%")
                                 .font(.caption)
@@ -46,7 +36,7 @@ struct SettingsView: View {
                         }
 
                     case .downloaded, .loading:
-                        LabeledContent("Status", value: "Loading…")
+                        LabeledContent("Status", value: "Loading\u{2026}")
 
                     case .ready:
                         LabeledContent("Status", value: "Ready")
@@ -99,26 +89,24 @@ struct SettingsView: View {
                     }
                 }
 
-                ForEach(WhisperModelLanguage.allCases) { language in
-                    let notDownloaded = language.supportedVariants.filter { !modelManager.isModelDownloaded($0) }
-                    if !notDownloaded.isEmpty {
-                        Section("\(language.flag) \(language.displayName) Models") {
-                            ForEach(notDownloaded) { variant in
-                                HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(variant.qualityName)
-                                        Text(variant.sizeDescription)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                let notDownloaded = WhisperModelVariant.allCases.filter { !modelManager.isModelDownloaded($0) }
+                if !notDownloaded.isEmpty {
+                    Section("Available Models") {
+                        ForEach(notDownloaded) { variant in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(variant.displayName)
+                                    Text(variant.sizeDescription)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if case .notDownloaded = modelManager.state {
+                                    Button("Download") {
+                                        modelManager.downloadModel(variant)
                                     }
-                                    Spacer()
-                                    if case .notDownloaded = modelManager.state {
-                                        Button("Download") {
-                                            modelManager.downloadModel(variant)
-                                        }
-                                        .buttonStyle(.bordered)
-                                        .controlSize(.small)
-                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
                                 }
                             }
                         }
@@ -127,7 +115,7 @@ struct SettingsView: View {
 
                 Section("About") {
                     LabeledContent("Version", value: "1.0")
-                    LabeledContent("Speech Engine", value: (TranscriptionEngine(rawValue: selectedEngine) ?? .dictation).displayName)
+                    LabeledContent("Speech Engine", value: "Whisper (OpenAI)")
                 }
             }
             .navigationTitle("Settings")

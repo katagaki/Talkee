@@ -19,11 +19,6 @@ struct TranscriptDetailView: View {
     @State var isSummarizing = false
     @State var summaryError: String?
 
-    var transcriptDuration: String {
-        guard let last = transcript.segments.last else { return "0:00" }
-        return transcriptManager.formatTime(last.end)
-    }
-
     var body: some View {
         List {
             Section("Title") {
@@ -47,7 +42,6 @@ struct TranscriptDetailView: View {
             Section("Details") {
                 LabeledContent("Date", value: transcript.formattedDate)
                 LabeledContent("Model", value: transcript.modelName)
-                LabeledContent("Duration", value: transcriptDuration)
             }
 
             Section("Transcript") {
@@ -55,7 +49,7 @@ struct TranscriptDetailView: View {
                     TextEditor(text: $editedBody)
                         .frame(minHeight: 200)
                 } else {
-                    Text(transcriptManager.fullText(of: transcript))
+                    Text(transcript.text)
                         .font(.body)
                         .textSelection(.enabled)
                 }
@@ -66,7 +60,7 @@ struct TranscriptDetailView: View {
                     if isSummarizing {
                         HStack {
                             Spacer()
-                            ProgressView("Summarizing with Apple Intelligence…")
+                            ProgressView("Summarizing with Apple Intelligence\u{2026}")
                             Spacer()
                         }
                     } else if let summary = transcript.summary, !summary.isEmpty {
@@ -110,7 +104,7 @@ struct TranscriptDetailView: View {
             } else {
                 ToolbarItem(placement: .primaryAction) {
                     Button("Edit Transcript") {
-                        editedBody = transcriptManager.fullText(of: transcript)
+                        editedBody = transcript.text
                         isEditingBody = true
                     }
                 }
@@ -125,10 +119,7 @@ struct TranscriptDetailView: View {
     }
 
     private func saveBody() {
-        // Store the edited text as a single segment preserving the full duration
-        let start = transcript.segments.first?.start ?? 0
-        let end = transcript.segments.last?.end ?? 0
-        transcript.segments = [(start: start, end: end, text: " \(editedBody)")]
+        transcript.text = editedBody
         transcriptManager.updateTranscript(transcript)
         isEditingBody = false
     }
@@ -137,8 +128,6 @@ struct TranscriptDetailView: View {
     private func generateSummary() async {
         isSummarizing = true
         summaryError = nil
-
-        let fullText = transcriptManager.fullText(of: transcript)
 
         guard SystemLanguageModel.default.isAvailable else {
             summaryError = "Apple Intelligence is not available on this device."
@@ -149,7 +138,7 @@ struct TranscriptDetailView: View {
         do {
             let session = LanguageModelSession()
             let response = try await session.respond(
-                to: "Summarize the following speech transcript concisely in a few sentences:\n\n\(fullText)"
+                to: "Summarize the following speech transcript concisely in a few sentences:\n\n\(transcript.text)"
             )
             transcript.summary = response.content
             transcriptManager.updateTranscript(transcript)

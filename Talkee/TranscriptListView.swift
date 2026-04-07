@@ -34,17 +34,10 @@ struct TranscriptListView: View {
                                     }
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                    if let summary = transcript.summary, !summary.isEmpty {
-                                        Text(summary)
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    } else {
-                                        Text(transcriptManager.fullText(of: transcript))
-                                            .font(.subheadline)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-                                    }
+                                    Text(transcript.summary ?? transcript.text)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
                                 }
                             }
                         }

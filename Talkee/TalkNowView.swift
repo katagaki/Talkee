@@ -7,30 +7,8 @@
 
 import AVFoundation
 import Foundation
-import Speech
 import SwiftUI
 import SwiftWhisper
-
-enum TranscriptionEngine: String, CaseIterable, Identifiable {
-    case whisper = "whisper"
-    case dictation = "dictation"
-
-    var id: String { rawValue }
-
-    var displayName: String {
-        switch self {
-        case .whisper: "Whisper"
-        case .dictation: "iOS Dictation"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .whisper: "waveform"
-        case .dictation: "keyboard"
-        }
-    }
-}
 
 struct TalkNowView: View {
 
@@ -38,314 +16,222 @@ struct TalkNowView: View {
 
     @State var modelManager = WhisperModelManager.shared
     @State var transcriptManager = TranscriptManager.shared
-    @AppStorage("selectedTranscriptionEngine") var selectedEngine: String = TranscriptionEngine.dictation.rawValue
 
-    // Whisper state
     @State var audioFrames: [Float] = []
     @State var liveSegments: [Segment] = []
     @State var finalizedSegments: [Segment] = []
     @State var isTranscribing = false
     @State var isFinalizing = false
-    @State var selectedLanguage: WhisperModelLanguage = WhisperModelManager.shared.selectedLanguage
-    @State var selectedVariant: WhisperModelVariant = WhisperModelManager.shared.selectedVariant
     @State var whisperTask: Task<Void, Never>?
 
-    // Dictation state
-    @State var speechRecognizer: SFSpeechRecognizer?
-    @State var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
-    @State var recognitionTask: SFSpeechRecognitionTask?
-    @State var dictationText: String = ""
-    @State var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = .notDetermined
-
-    // Shared state
     @State var isRecording = false
     @State var savedTranscript: Transcript?
 
-    var engine: TranscriptionEngine {
-        TranscriptionEngine(rawValue: selectedEngine) ?? .dictation
+    var displaySegments: [Segment] {
+        finalizedSegments + liveSegments
     }
 
-    var currentTranscriptText: String {
-        switch engine {
-        case .whisper:
-            let segments = finalizedSegments + liveSegments
-            return segments
-                .map { $0.text.trimmingCharacters(in: .whitespaces) }
-                .joined(separator: " ")
-        case .dictation:
-            return dictationText
-        }
+    var displayText: String {
+        displaySegments
+            .map { $0.text.trimmingCharacters(in: .whitespaces) }
+            .joined(separator: " ")
     }
 
     var hasTranscript: Bool {
-        !currentTranscriptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         NavigationStack {
             List {
-                switch engine {
-                case .whisper:
-                    whisperContent
-                case .dictation:
-                    dictationContent
-                }
+                switch modelManager.state {
+                case .notDownloaded:
+                    onboardingContent
 
-                if hasTranscript {
-                    Section("Transcription") {
-                        Text(currentTranscriptText)
-                            .font(.body)
-                            .textSelection(.enabled)
-                    }
-                }
-
-                if hasTranscript && !isRecording && !isFinalizing {
+                case .downloading(let progress):
                     Section {
-                        if let saved = savedTranscript {
-                            NavigationLink("View Saved Transcript", destination: TranscriptDetailView(transcript: saved))
+                        VStack(spacing: 12) {
+                            Text("Downloading model\u{2026}")
+                                .font(.headline)
+                            Text("This may take a few minutes. Please keep the app open.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            ProgressView(value: progress)
+                                .progressViewStyle(.linear)
+                            Text("\(Int(progress * 100))%")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Button("Cancel", role: .destructive) {
+                                modelManager.cancelDownload()
+                                UIApplication.shared.isIdleTimerDisabled = false
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.vertical)
+                    }
+
+                case .downloaded, .loading:
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Loading model\u{2026}")
+                            Spacer()
+                        }
+                        .padding(.vertical)
+                    }
+
+                case .ready:
+                    Section {
+                        if isRecording {
+                            Button {
+                                stopRecording()
+                            } label: {
+                                Label("Stop Recording", systemImage: "stop.circle.fill")
+                                    .foregroundStyle(.red)
+                            }
+
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(.red)
+                                    .frame(width: 8, height: 8)
+                                Text(isTranscribing
+                                     ? "Recording & transcribing\u{2026}"
+                                     : "Recording\u{2026}")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else if isFinalizing {
+                            HStack {
+                                Spacer()
+                                ProgressView("Finalizing transcription\u{2026}")
+                                Spacer()
+                            }
                         } else {
-                            Button("Save Transcript") {
-                                saveCurrentTranscript()
+                            Button {
+                                startRecording()
+                            } label: {
+                                Label("Start Transcribing", systemImage: "mic")
                             }
                         }
-                        Button("Clear", role: .destructive) {
-                            clearTranscript()
+                    }
+
+                    if hasTranscript {
+                        Section("Transcription") {
+                            Text(displayText)
+                                .font(.body)
+                                .textSelection(.enabled)
                         }
+                    }
+
+                    if hasTranscript && !isRecording && !isFinalizing {
+                        Section {
+                            if let saved = savedTranscript {
+                                NavigationLink("View Saved Transcript", destination: TranscriptDetailView(transcript: saved))
+                            } else {
+                                Button("Save Transcript") {
+                                    savedTranscript = transcriptManager.saveTranscript(
+                                        segments: displaySegments,
+                                        modelVariant: modelManager.selectedVariant
+                                    )
+                                }
+                            }
+                            Button("Clear", role: .destructive) {
+                                finalizedSegments.removeAll()
+                                liveSegments.removeAll()
+                                savedTranscript = nil
+                            }
+                        }
+                    }
+
+                case .error(let message):
+                    Section {
+                        VStack(spacing: 12) {
+                            Image(systemName: "exclamationmark.triangle")
+                                .font(.largeTitle)
+                                .foregroundStyle(.red)
+                            Text("Error")
+                                .font(.headline)
+                            Text(message)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                            Button("Try Again") {
+                                modelManager.resetError()
+                            }
+                            .buttonStyle(.borderedProminent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical)
                     }
                 }
             }
             .navigationTitle("Talk Now")
             .onAppear {
-                if engine == .whisper && modelManager.state == .downloaded {
+                if modelManager.state == .downloaded {
                     Task { await modelManager.loadModel() }
                 }
             }
         }
     }
 
-    // MARK: - Whisper UI
+    // MARK: - Onboarding
 
     @ViewBuilder
-    var whisperContent: some View {
-        switch modelManager.state {
-        case .notDownloaded:
-            Section {
-                VStack(spacing: 12) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("Whisper model required")
-                        .font(.headline)
-                    Text("Choose a model variant and download it to get started.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
+    var onboardingContent: some View {
+        Section {
+            VStack(spacing: 12) {
+                Image(systemName: "waveform.circle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.accent)
+                Text("Welcome to Talkee")
+                    .font(.title2.bold())
+                Text("Talkee uses OpenAI Whisper to transcribe speech on-device. Download the model to get started.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical)
+        }
 
-            Section("Language") {
-                Picker("Language", selection: $selectedLanguage) {
-                    ForEach(WhisperModelLanguage.allCases) { language in
-                        Text("\(language.flag) \(language.displayName)")
-                            .tag(language)
-                    }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-                .onChange(of: selectedLanguage) {
-                    modelManager.selectedLanguage = selectedLanguage
-                    let variants = selectedLanguage.supportedVariants
-                    if !variants.contains(selectedVariant) {
-                        selectedVariant = variants.first ?? .small
-                    }
-                }
+        Section {
+            Button {
+                UIApplication.shared.isIdleTimerDisabled = true
+                modelManager.downloadModel(.largeV3)
+            } label: {
+                Label("Download Large v3 (~3.1 GB)", systemImage: "arrow.down.circle.fill")
             }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity)
+        } footer: {
+            Text("Recommended for the best accuracy across all supported languages. Requires a stable internet connection.")
+        }
 
-            Section("Model Size") {
-                Picker("Model", selection: $selectedVariant) {
-                    ForEach(selectedLanguage.supportedVariants) { variant in
-                        HStack {
-                            Text(variant.qualityName)
-                            Spacer()
+        Section("Or choose a smaller model") {
+            ForEach(WhisperModelVariant.allCases.filter { $0 != .largeV3 }) { variant in
+                Button {
+                    UIApplication.shared.isIdleTimerDisabled = true
+                    modelManager.downloadModel(variant)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(variant.displayName)
                             Text(variant.sizeDescription)
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        .tag(variant)
+                        Spacer()
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.accent)
                     }
                 }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            }
-
-            Section {
-                Button {
-                    modelManager.downloadModel(selectedVariant)
-                } label: {
-                    Label("Download \(selectedVariant.displayName)", systemImage: "arrow.down.circle.fill")
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-            }
-
-        case .downloading(let progress):
-            Section {
-                VStack(spacing: 12) {
-                    Text("Downloading model\u{2026}")
-                        .font(.headline)
-                    ProgressView(value: progress)
-                        .progressViewStyle(.linear)
-                    Text("\(Int(progress * 100))%")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("Cancel", role: .destructive) {
-                        modelManager.cancelDownload()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(.vertical)
-            }
-
-        case .downloaded, .loading:
-            Section {
-                HStack {
-                    Spacer()
-                    ProgressView("Loading model\u{2026}")
-                    Spacer()
-                }
-                .padding(.vertical)
-            }
-
-        case .ready:
-            recordingControls
-
-        case .error(let message):
-            Section {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.largeTitle)
-                        .foregroundStyle(.red)
-                    Text("Error")
-                        .font(.headline)
-                    Text(message)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Button("Try Again") {
-                        modelManager.resetError()
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
+                .tint(.primary)
             }
         }
     }
 
-    // MARK: - Dictation UI
-
-    @ViewBuilder
-    var dictationContent: some View {
-        switch speechAuthStatus {
-        case .notDetermined:
-            Section {
-                Button {
-                    requestSpeechAuthorization()
-                } label: {
-                    Label("Enable Speech Recognition", systemImage: "mic.badge.plus")
-                }
-                .buttonStyle(.borderedProminent)
-                .frame(maxWidth: .infinity)
-            }
-
-        case .denied, .restricted:
-            Section {
-                VStack(spacing: 12) {
-                    Image(systemName: "mic.slash")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
-                    Text("Speech recognition not available")
-                        .font(.headline)
-                    Text("Enable speech recognition in Settings > Privacy & Security > Speech Recognition.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical)
-            }
-
-        case .authorized:
-            recordingControls
-
-        @unknown default:
-            recordingControls
-        }
-    }
-
-    // MARK: - Shared Recording Controls
-
-    @ViewBuilder
-    var recordingControls: some View {
-        Section {
-            if isRecording {
-                Button {
-                    stopRecording()
-                } label: {
-                    Label("Stop Recording", systemImage: "stop.circle.fill")
-                        .foregroundStyle(.red)
-                }
-
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 8, height: 8)
-                    Text(engine == .whisper && isTranscribing
-                         ? "Recording & transcribing\u{2026}"
-                         : "Recording\u{2026}")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } else if isFinalizing {
-                HStack {
-                    Spacer()
-                    ProgressView("Finalizing transcription\u{2026}")
-                    Spacer()
-                }
-            } else {
-                Button {
-                    startRecording()
-                } label: {
-                    Label("Start Transcribing", systemImage: "mic")
-                }
-            }
-        }
-    }
-
-    // MARK: - Recording Logic
-
-    func startRecording() {
-        savedTranscript = nil
-
-        switch engine {
-        case .whisper:
-            startWhisperRecording()
-        case .dictation:
-            startDictationRecording()
-        }
-    }
-
-    func stopRecording() {
-        switch engine {
-        case .whisper:
-            stopWhisperRecording()
-        case .dictation:
-            stopDictationRecording()
-        }
-    }
-
-    // MARK: - Whisper Recording
+    // MARK: - Recording
 
     static let whisperSampleRate: Double = 16000
     static let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
@@ -353,15 +239,15 @@ struct TalkNowView: View {
                                              channels: 1,
                                              interleaved: false)!
 
-    func startWhisperRecording() {
+    func startRecording() {
         audioFrames.removeAll()
         liveSegments.removeAll()
+        savedTranscript = nil
         isRecording = true
 
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Install a converter to resample device audio to 16kHz mono for Whisper
         guard let converter = AVAudioConverter(from: inputFormat, to: Self.whisperFormat) else {
             isRecording = false
             return
@@ -401,11 +287,11 @@ struct TalkNowView: View {
         }
 
         whisperTask = Task {
-            await whisperTranscriptionLoop()
+            await liveTranscriptionLoop()
         }
     }
 
-    func whisperTranscriptionLoop() async {
+    func liveTranscriptionLoop() async {
         guard let whisper = modelManager.whisper else { return }
 
         try? await Task.sleep(for: .seconds(2))
@@ -427,7 +313,7 @@ struct TalkNowView: View {
         }
     }
 
-    func stopWhisperRecording() {
+    func stopRecording() {
         guard audioEngine.isRunning else { return }
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -447,93 +333,5 @@ struct TalkNowView: View {
             }
             isFinalizing = false
         }
-    }
-
-    // MARK: - Dictation Recording
-
-    func requestSpeechAuthorization() {
-        SFSpeechRecognizer.requestAuthorization { status in
-            DispatchQueue.main.async {
-                speechAuthStatus = status
-            }
-        }
-    }
-
-    func startDictationRecording() {
-        let recognizer = SFSpeechRecognizer(locale: Locale.current)
-        guard let recognizer, recognizer.isAvailable else { return }
-
-        speechRecognizer = recognizer
-        dictationText = ""
-        isRecording = true
-
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        recognitionRequest = request
-
-        let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-            request.append(buffer)
-        }
-
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.record)
-            audioEngine.prepare()
-            try audioEngine.start()
-        } catch {
-            isRecording = false
-            return
-        }
-
-        recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-            if let result {
-                dictationText = result.bestTranscription.formattedString
-            }
-            if error != nil || (result?.isFinal ?? false) {
-                self.finishDictation()
-            }
-        }
-    }
-
-    func stopDictationRecording() {
-        recognitionRequest?.endAudio()
-        finishDictation()
-    }
-
-    private func finishDictation() {
-        if audioEngine.isRunning {
-            audioEngine.stop()
-            audioEngine.inputNode.removeTap(onBus: 0)
-        }
-        recognitionTask?.cancel()
-        recognitionTask = nil
-        recognitionRequest = nil
-        isRecording = false
-    }
-
-    // MARK: - Save / Clear
-
-    func saveCurrentTranscript() {
-        switch engine {
-        case .whisper:
-            let segments = finalizedSegments + liveSegments
-            savedTranscript = transcriptManager.saveTranscript(
-                segments: segments,
-                modelVariant: modelManager.selectedVariant
-            )
-        case .dictation:
-            savedTranscript = transcriptManager.saveTranscript(
-                text: dictationText,
-                engineName: "iOS Dictation"
-            )
-        }
-    }
-
-    func clearTranscript() {
-        finalizedSegments.removeAll()
-        liveSegments.removeAll()
-        dictationText = ""
-        savedTranscript = nil
     }
 }
