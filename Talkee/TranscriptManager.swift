@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import SwiftWhisper
 
 struct Transcript: Identifiable {
     let id: String // filename without extension
@@ -155,19 +154,15 @@ class TranscriptManager {
             .sorted { $0.date > $1.date }
     }
 
-    func saveTranscript(segments: [Segment], modelVariant: WhisperModelVariant) -> Transcript {
-        let text = segments
-            .map { $0.text.trimmingCharacters(in: .whitespaces) }
-            .joined(separator: " ")
-
+    func saveTranscript(text: String, engineName: String) -> Transcript {
         let now = Date()
         let id = Self.fileNameFormatter.string(from: now)
         let transcript = Transcript(
             id: id,
             title: "",
             date: now,
-            modelName: modelVariant.displayName,
-            text: text,
+            modelName: engineName,
+            text: text.trimmingCharacters(in: .whitespacesAndNewlines),
             summary: nil
         )
 

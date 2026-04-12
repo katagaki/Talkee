@@ -55,33 +55,31 @@ struct TranscriptDetailView: View {
                 }
             }
 
-            if #available(iOS 26.0, *) {
-                Section("Summary") {
-                    if isSummarizing {
-                        HStack {
-                            Spacer()
-                            ProgressView("Summarizing with Apple Intelligence\u{2026}")
-                            Spacer()
-                        }
-                    } else if let summary = transcript.summary, !summary.isEmpty {
-                        Text(summary)
-
-                        Button("Regenerate Summary") {
-                            Task { await generateSummary() }
-                        }
-                    } else {
-                        Button {
-                            Task { await generateSummary() }
-                        } label: {
-                            Label("Summarize with Apple Intelligence", systemImage: "apple.intelligence")
-                        }
+            Section("Summary") {
+                if isSummarizing {
+                    HStack {
+                        Spacer()
+                        ProgressView("Summarizing with Apple Intelligence\u{2026}")
+                        Spacer()
                     }
+                } else if let summary = transcript.summary, !summary.isEmpty {
+                    Text(summary)
 
-                    if let error = summaryError {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
+                    Button("Regenerate Summary") {
+                        Task { await generateSummary() }
                     }
+                } else {
+                    Button {
+                        Task { await generateSummary() }
+                    } label: {
+                        Label("Summarize with Apple Intelligence", systemImage: "apple.intelligence")
+                    }
+                }
+
+                if let error = summaryError {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                 }
             }
         }
@@ -124,7 +122,6 @@ struct TranscriptDetailView: View {
         isEditingBody = false
     }
 
-    @available(iOS 26.0, *)
     private func generateSummary() async {
         isSummarizing = true
         summaryError = nil

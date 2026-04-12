@@ -7,51 +7,47 @@
 
 import AVFoundation
 import Foundation
+import Speech
 import SwiftUI
-import SwiftWhisper
 
 struct TalkNowView: View {
 
     let audioEngine = AVAudioEngine()
 
-    @State var modelManager = WhisperModelManager.shared
+    @State var speechManager = SpeechAnalyzerManager.shared
     @State var transcriptManager = TranscriptManager.shared
 
-    @State var audioFrames: [Float] = []
-    @State var liveSegments: [Segment] = []
-    @State var finalizedSegments: [Segment] = []
-    @State var isTranscribing = false
-    @State var isFinalizing = false
-    @State var whisperTask: Task<Void, Never>?
-
     @State var isRecording = false
+    @State var isFinalizing = false
     @State var savedTranscript: Transcript?
-
-    var displaySegments: [Segment] {
-        finalizedSegments + liveSegments
-    }
-
-    var displayText: String {
-        displaySegments
-            .map { $0.text.trimmingCharacters(in: .whitespaces) }
-            .joined(separator: " ")
-    }
+    @State var speechAuthStatus: SFSpeechRecognizerAuthorizationStatus = SFSpeechRecognizer.authorizationStatus()
+    @State var lastError: String?
 
     var hasTranscript: Bool {
-        !displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !speechManager.displayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         NavigationStack {
             List {
-                switch modelManager.state {
-                case .notDownloaded:
+                switch speechManager.state {
+                case .idle, .checkingModel:
+                    Section {
+                        HStack {
+                            Spacer()
+                            ProgressView("Checking language model\u{2026}")
+                            Spacer()
+                        }
+                        .padding(.vertical)
+                    }
+
+                case .modelMissing:
                     onboardingContent
 
                 case .downloading(let progress):
                     Section {
                         VStack(spacing: 12) {
-                            Text("Downloading model\u{2026}")
+                            Text("Downloading language model\u{2026}")
                                 .font(.headline)
                             Text("This may take a few minutes. Please keep the app open.")
                                 .font(.subheadline)
@@ -62,63 +58,16 @@ struct TalkNowView: View {
                             Text("\(Int(progress * 100))%")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Button("Cancel", role: .destructive) {
-                                modelManager.cancelDownload()
-                                UIApplication.shared.isIdleTimerDisabled = false
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .padding(.vertical)
-                    }
-
-                case .downloaded, .loading:
-                    Section {
-                        HStack {
-                            Spacer()
-                            ProgressView("Loading model\u{2026}")
-                            Spacer()
                         }
                         .padding(.vertical)
                     }
 
                 case .ready:
-                    Section {
-                        if isRecording {
-                            Button {
-                                stopRecording()
-                            } label: {
-                                Label("Stop Recording", systemImage: "stop.circle.fill")
-                                    .foregroundStyle(.red)
-                            }
-
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(.red)
-                                    .frame(width: 8, height: 8)
-                                Text(isTranscribing
-                                     ? "Recording & transcribing\u{2026}"
-                                     : "Recording\u{2026}")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } else if isFinalizing {
-                            HStack {
-                                Spacer()
-                                ProgressView("Finalizing transcription\u{2026}")
-                                Spacer()
-                            }
-                        } else {
-                            Button {
-                                startRecording()
-                            } label: {
-                                Label("Start Transcribing", systemImage: "mic")
-                            }
-                        }
-                    }
+                    recordingSection
 
                     if hasTranscript {
                         Section("Transcription") {
-                            Text(displayText)
+                            Text(speechManager.displayText)
                                 .font(.body)
                                 .textSelection(.enabled)
                         }
@@ -131,14 +80,13 @@ struct TalkNowView: View {
                             } else {
                                 Button("Save Transcript") {
                                     savedTranscript = transcriptManager.saveTranscript(
-                                        segments: displaySegments,
-                                        modelVariant: modelManager.selectedVariant
+                                        text: speechManager.displayText,
+                                        engineName: "SpeechAnalyzer (\(speechManager.selectedLocale.displayName))"
                                     )
                                 }
                             }
                             Button("Clear", role: .destructive) {
-                                finalizedSegments.removeAll()
-                                liveSegments.removeAll()
+                                speechManager.clearTranscript()
                                 savedTranscript = nil
                             }
                         }
@@ -157,7 +105,7 @@ struct TalkNowView: View {
                                 .foregroundStyle(.secondary)
                                 .multilineTextAlignment(.center)
                             Button("Try Again") {
-                                modelManager.resetError()
+                                Task { await refreshState() }
                             }
                             .buttonStyle(.borderedProminent)
                         }
@@ -167,15 +115,16 @@ struct TalkNowView: View {
                 }
             }
             .navigationTitle("Talk Now")
-            .onAppear {
-                if modelManager.state == .downloaded {
-                    Task { await modelManager.loadModel() }
-                }
+            .task {
+                await refreshState()
+            }
+            .onChange(of: speechManager.selectedLocale) {
+                Task { await refreshState() }
             }
         }
     }
 
-    // MARK: - Onboarding
+    // MARK: - Sections
 
     @ViewBuilder
     var onboardingContent: some View {
@@ -186,7 +135,7 @@ struct TalkNowView: View {
                     .foregroundStyle(.accent)
                 Text("Welcome to Talkee")
                     .font(.title2.bold())
-                Text("Talkee uses OpenAI Whisper to transcribe speech on-device. Download the model to get started.")
+                Text("Talkee uses Apple's SpeechAnalyzer to transcribe speech on-device. Download the language model to get started.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -195,143 +144,159 @@ struct TalkNowView: View {
             .padding(.vertical)
         }
 
+        Section("Language") {
+            Picker("Language", selection: Binding(
+                get: { speechManager.selectedLocale },
+                set: { newValue in
+                    Task { await speechManager.switchLocale(to: newValue) }
+                }
+            )) {
+                ForEach(TranscriptionLocale.allCases) { locale in
+                    Text("\(locale.flag) \(locale.displayName)")
+                        .tag(locale)
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        }
+
         Section {
             Button {
                 UIApplication.shared.isIdleTimerDisabled = true
-                modelManager.downloadModel(.largeV3)
+                Task {
+                    await speechManager.downloadModel()
+                    UIApplication.shared.isIdleTimerDisabled = false
+                }
             } label: {
-                Label("Download Large v3 (~3.1 GB)", systemImage: "arrow.down.circle.fill")
+                Label("Download \(speechManager.selectedLocale.displayName) Model",
+                      systemImage: "arrow.down.circle.fill")
             }
             .buttonStyle(.borderedProminent)
             .frame(maxWidth: .infinity)
         } footer: {
-            Text("Recommended for the best accuracy across all supported languages. Requires a stable internet connection.")
+            Text("Requires a stable internet connection. You can download additional languages later in Settings.")
         }
+    }
 
-        Section("Or choose a smaller model") {
-            ForEach(WhisperModelVariant.allCases.filter { $0 != .largeV3 }) { variant in
+    @ViewBuilder
+    var recordingSection: some View {
+        Section {
+            if isRecording {
                 Button {
-                    UIApplication.shared.isIdleTimerDisabled = true
-                    modelManager.downloadModel(variant)
+                    Task { await stopRecording() }
                 } label: {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(variant.displayName)
-                            Text(variant.sizeDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.accent)
-                    }
+                    Label("Stop Recording", systemImage: "stop.circle.fill")
+                        .foregroundStyle(.red)
                 }
-                .tint(.primary)
+
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 8, height: 8)
+                    Text("Recording & transcribing\u{2026}")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else if isFinalizing {
+                HStack {
+                    Spacer()
+                    ProgressView("Finalizing\u{2026}")
+                    Spacer()
+                }
+            } else {
+                Button {
+                    Task { await startRecording() }
+                } label: {
+                    Label("Start Transcribing", systemImage: "mic")
+                }
+
+                if let lastError {
+                    Text(lastError)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
         }
+    }
+
+    // MARK: - Model availability
+
+    private func refreshState() async {
+        _ = await speechManager.checkModelAvailability()
     }
 
     // MARK: - Recording
 
-    static let whisperSampleRate: Double = 16000
-    static let whisperFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                                             sampleRate: whisperSampleRate,
-                                             channels: 1,
-                                             interleaved: false)!
+    private func requestAuthorizationIfNeeded() async -> Bool {
+        if speechAuthStatus == .notDetermined {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                SFSpeechRecognizer.requestAuthorization { status in
+                    Task { @MainActor in
+                        self.speechAuthStatus = status
+                        continuation.resume()
+                    }
+                }
+            }
+        }
+        return speechAuthStatus == .authorized
+    }
 
-    func startRecording() {
-        audioFrames.removeAll()
-        liveSegments.removeAll()
+    private func startRecording() async {
+        lastError = nil
         savedTranscript = nil
-        isRecording = true
+
+        guard await requestAuthorizationIfNeeded() else {
+            lastError = "Speech recognition permission was denied. Enable it in Settings."
+            return
+        }
+
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .spokenAudio)
+            try AVAudioSession.sharedInstance().setActive(true, options: .notifyOthersOnDeactivation)
+        } catch {
+            lastError = "Failed to configure audio session: \(error.localizedDescription)"
+            return
+        }
+
+        do {
+            try await speechManager.startTranscribing()
+        } catch {
+            lastError = error.localizedDescription
+            return
+        }
 
         let inputNode = audioEngine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
-
-        guard let converter = AVAudioConverter(from: inputFormat, to: Self.whisperFormat) else {
-            isRecording = false
-            return
-        }
-
-        inputNode.installTap(
-            onBus: 0,
-            bufferSize: AVAudioFrameCount(inputFormat.sampleRate),
-            format: inputFormat
-        ) { buffer, _ in
-            let ratio = Self.whisperSampleRate / inputFormat.sampleRate
-            let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
-            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: Self.whisperFormat,
-                                                      frameCapacity: outputFrameCount) else { return }
-
-            var error: NSError?
-            converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-                outStatus.pointee = .haveData
-                return buffer
-            }
-
-            if error == nil, let channelData = outputBuffer.floatChannelData {
-                let frames = Array(UnsafeBufferPointer(
-                    start: channelData[0],
-                    count: Int(outputBuffer.frameLength)
-                ))
-                self.audioFrames.append(contentsOf: frames)
+        let recordingFormat = inputNode.outputFormat(forBus: 0)
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { buffer, _ in
+            Task { @MainActor in
+                await SpeechAnalyzerManager.shared.feedAudio(buffer)
             }
         }
+
+        audioEngine.prepare()
         do {
-            try AVAudioSession.sharedInstance().setCategory(.record)
-            audioEngine.prepare()
             try audioEngine.start()
+            isRecording = true
         } catch {
-            isRecording = false
-            return
-        }
-
-        whisperTask = Task {
-            await liveTranscriptionLoop()
+            inputNode.removeTap(onBus: 0)
+            _ = await speechManager.stopTranscribing()
+            lastError = "Failed to start audio engine: \(error.localizedDescription)"
         }
     }
 
-    func liveTranscriptionLoop() async {
-        guard let whisper = modelManager.whisper else { return }
-
-        try? await Task.sleep(for: .seconds(2))
-
-        while isRecording && !Task.isCancelled {
-            let currentFrames = audioFrames
-            guard !currentFrames.isEmpty else {
-                try? await Task.sleep(for: .seconds(1))
-                continue
-            }
-
-            isTranscribing = true
-            if let segments = try? await whisper.transcribe(audioFrames: currentFrames) {
-                liveSegments = segments
-            }
-            isTranscribing = false
-
-            try? await Task.sleep(for: .seconds(3))
-        }
-    }
-
-    func stopRecording() {
+    private func stopRecording() async {
         guard audioEngine.isRunning else { return }
+
+        isRecording = false
+        isFinalizing = true
+
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
-        isRecording = false
 
-        whisperTask?.cancel()
-        whisperTask = nil
+        _ = await speechManager.stopTranscribing()
 
-        guard let whisper = modelManager.whisper else { return }
-        let allFrames = audioFrames
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
-        isFinalizing = true
-        Task {
-            if let segments = try? await whisper.transcribe(audioFrames: allFrames) {
-                liveSegments.removeAll()
-                finalizedSegments.append(contentsOf: segments)
-            }
-            isFinalizing = false
-        }
+        isFinalizing = false
     }
 }
