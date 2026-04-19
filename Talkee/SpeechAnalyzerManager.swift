@@ -5,10 +5,17 @@
 //  Wraps the iOS 26 SpeechAnalyzer + SpeechTranscriber APIs.
 //
 
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 import SwiftUI
+
+/// Sendable box around a non-Sendable AVAudioPCMBuffer so we can ferry it
+/// from the audio tap thread into an actor-isolated context without tripping
+/// strict-concurrency diagnostics.
+struct AudioBufferBox: @unchecked Sendable {
+    let buffer: AVAudioPCMBuffer
+}
 
 enum TranscriptionLocale: String, CaseIterable, Identifiable {
     case englishUS = "en-US"
@@ -98,7 +105,6 @@ final class SpeechAnalyzerManager {
     // Speech framework objects
     private var transcriber: SpeechTranscriber?
     private var analyzer: SpeechAnalyzer?
-    private var inputSequence: AsyncStream<AnalyzerInput>?
     private var inputBuilder: AsyncStream<AnalyzerInput>.Continuation?
     private var recognizerTask: Task<Void, Never>?
     private var analyzerFormat: AVAudioFormat?
@@ -165,7 +171,7 @@ final class SpeechAnalyzerManager {
                 downloadProgressObservation = nil
             }
 
-            try await AssetInventory.reserve(locale: selectedLocale.locale)
+            try await reserveLocaleIfNeeded(selectedLocale.locale)
             state = .ready
         } catch {
             downloadProgressObservation = nil
@@ -173,7 +179,19 @@ final class SpeechAnalyzerManager {
         }
     }
 
-    /// Switch to a different locale. Releases any previously reserved locales.
+    /// Reserves the given locale only if it isn't already reserved.
+    private func reserveLocaleIfNeeded(_ locale: Locale) async throws {
+        let reserved = await AssetInventory.reservedLocales
+        let bcp47 = locale.identifier(.bcp47)
+        if reserved.contains(where: { $0.identifier(.bcp47) == bcp47 }) {
+            return
+        }
+        try await AssetInventory.reserve(locale: locale)
+    }
+
+    /// Switch the active locale. The new locale's model availability is
+    /// re-checked. Previously reserved locales remain reserved until the
+    /// app is terminated.
     func switchLocale(to locale: TranscriptionLocale) async {
         selectedLocale = locale
         state = .idle
@@ -214,11 +232,10 @@ final class SpeechAnalyzerManager {
 
         // Build the input stream
         let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
-        self.inputSequence = stream
         self.inputBuilder = continuation
 
-        // Ensure the locale is reserved for this session
-        try await AssetInventory.reserve(locale: selectedLocale.locale)
+        // Ensure the locale is reserved for this session (no-op if already reserved)
+        try await reserveLocaleIfNeeded(selectedLocale.locale)
 
         // Listen for results
         recognizerTask = Task { [weak self] in
@@ -260,7 +277,7 @@ final class SpeechAnalyzerManager {
     }
 
     /// Feeds a PCM audio buffer to the analyzer. Call repeatedly during recording.
-    func feedAudio(_ buffer: AVAudioPCMBuffer) async {
+    func feedAudio(_ buffer: AVAudioPCMBuffer) {
         guard let inputBuilder, let analyzerFormat else { return }
         do {
             let converted = try converter.convertBuffer(buffer, to: analyzerFormat)
@@ -287,7 +304,6 @@ final class SpeechAnalyzerManager {
         let result = displayText
         analyzer = nil
         transcriber = nil
-        inputSequence = nil
         inputBuilder = nil
         analyzerFormat = nil
         return result

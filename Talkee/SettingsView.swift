@@ -81,8 +81,10 @@ struct SettingsView: View {
                                     Button("Download") {
                                         Task {
                                             downloadingLocale = locale
+                                            UIApplication.shared.isIdleTimerDisabled = true
                                             await speechManager.switchLocale(to: locale)
                                             await speechManager.downloadModel()
+                                            UIApplication.shared.isIdleTimerDisabled = false
                                             downloadingLocale = nil
                                             await refreshInventory()
                                         }

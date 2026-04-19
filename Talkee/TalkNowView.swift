@@ -5,7 +5,7 @@
 //  Created by シン・ジャスティン on 2024/06/08.
 //
 
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 import Speech
 import SwiftUI
@@ -268,8 +268,9 @@ struct TalkNowView: View {
         let inputNode = audioEngine.inputNode
         let recordingFormat = inputNode.outputFormat(forBus: 0)
         inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { buffer, _ in
+            let wrapper = AudioBufferBox(buffer: buffer)
             Task { @MainActor in
-                await SpeechAnalyzerManager.shared.feedAudio(buffer)
+                SpeechAnalyzerManager.shared.feedAudio(wrapper.buffer)
             }
         }
 

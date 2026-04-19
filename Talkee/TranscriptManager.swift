@@ -98,7 +98,6 @@ class TranscriptManager {
 
         let lines = content.components(separatedBy: "\n")
         var i = 0
-        var metadataDone = false
 
         while i < lines.count {
             let line = lines[i]
@@ -124,7 +123,6 @@ class TranscriptManager {
                 }
                 summary = summaryLines.joined(separator: "\n")
             } else {
-                metadataDone = true
                 bodyLines.append(line)
             }
             i += 1
