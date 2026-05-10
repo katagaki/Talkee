@@ -13,7 +13,15 @@ struct MainTabView: View {
         TabView {
             TalkNowView()
                 .tabItem {
-                    Label("Talk Now", systemImage: "mic.fill")
+                    Label("Tab.TalkNow", systemImage: "mic.fill")
+                }
+            TranscriptionsListView()
+                .tabItem {
+                    Label("Tab.Transcriptions", systemImage: "list.bullet.rectangle")
+                }
+            MoreView()
+                .tabItem {
+                    Label("Tab.More", systemImage: "ellipsis")
                 }
         }
     }
