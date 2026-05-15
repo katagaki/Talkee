@@ -77,7 +77,8 @@ final class ASRService {
     func start(
         in context: ModelContext,
         models: AsrModels,
-        diarizerModels: SortformerModels? = nil
+        diarizerModels: SortformerModels? = nil,
+        languageCode: String? = nil
     ) async {
         guard case .idle = state else { return }
         state = .starting
@@ -95,11 +96,11 @@ final class ASRService {
         }
 
         let title = Self.defaultTitle(for: sessionStart)
-        let languageCode = Locale.current.language.languageCode?.identifier
+        let effectiveLanguageCode = languageCode ?? Locale.current.language.languageCode?.identifier
         let transcription = Transcription(
             title: title,
             createdAt: sessionStart,
-            languageCode: languageCode
+            languageCode: effectiveLanguageCode
         )
         context.insert(transcription)
         do { try context.save() } catch { /* keep going */ }
@@ -109,6 +110,9 @@ final class ASRService {
         do {
             let manager = SlidingWindowAsrManager(config: .streaming)
             try await manager.loadModels(models)
+            if let code = effectiveLanguageCode, let lang = Language(rawValue: code) {
+                await manager.setLanguage(lang)
+            }
             try await manager.startStreaming(source: .microphone)
             self.manager = manager
 
@@ -135,8 +139,9 @@ final class ASRService {
         }
     }
 
-    func stop() async {
-        guard case .recording = state else { return }
+    @discardableResult
+    func stop() async -> PersistentIdentifier? {
+        guard case .recording = state else { return nil }
         state = .stopping
 
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -171,8 +176,20 @@ final class ASRService {
         updatesTask = nil
         manager = nil
 
-        if let context = modelContext {
-            try? context.save()
+        let savedID: PersistentIdentifier?
+        if let context = modelContext, let id = currentTranscriptionID {
+            if liveBlocks.isEmpty {
+                if let transcription = context.model(for: id) as? Transcription {
+                    context.delete(transcription)
+                }
+                try? context.save()
+                savedID = nil
+            } else {
+                try? context.save()
+                savedID = id
+            }
+        } else {
+            savedID = nil
         }
 
         if idleTimerHeld {
@@ -180,8 +197,12 @@ final class ASRService {
             idleTimerHeld = false
         }
 
+        liveBlocks.removeAll()
         volatileText = ""
+        currentTranscriptionID = nil
         state = .idle
+
+        return savedID
     }
 
     private func teardown() async {

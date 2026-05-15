@@ -16,6 +16,8 @@ struct TranscriptionDetailView: View {
 
     @State private var showRename = false
     @State private var showSummarize = false
+    @State private var showSummarizeError = false
+    @State private var summarizeError: String?
     @State private var renameDraft = ""
 
     var body: some View {
@@ -36,8 +38,20 @@ struct TranscriptionDetailView: View {
                          : transcription.title)
         .toolbarTitleDisplayMode(.inlineLarge)
         .toolbar { toolbarItems }
-        .sheet(isPresented: $showSummarize) {
-            SummarySheet(transcription: transcription)
+        .alert("Detail.Summarize", isPresented: $showSummarize) {
+            ForEach(SummaryKind.allCases) { kind in
+                Button(String(localized: kind.titleKey)) {
+                    Task { await summarize(kind: kind) }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Detail.Summarize.Message")
+        }
+        .alert("Detail.Summarize.Error", isPresented: $showSummarizeError) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(summarizeError ?? "")
         }
         .alert("Detail.Rename", isPresented: $showRename) {
             TextField(String(localized: "Detail.Rename.Placeholder"), text: $renameDraft)
@@ -175,6 +189,19 @@ struct TranscriptionDetailView: View {
         }
     }
 
+    private func summarize(kind: SummaryKind) async {
+        do {
+            let markdown = try await SummarizationService.summarize(transcription, kind: kind)
+            let summary = TranscriptionSummary(kind: kind, markdown: markdown, createdAt: .now, parent: transcription)
+            modelContext.insert(summary)
+            transcription.summaries.append(summary)
+            try? modelContext.save()
+        } catch {
+            summarizeError = error.localizedDescription
+            showSummarizeError = true
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
         ToolbarItemGroup(placement: .topBarTrailing) {
@@ -199,7 +226,7 @@ struct TranscriptionDetailView: View {
                     Label("Detail.Rename", systemImage: "pencil")
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
+                Image(systemName: "ellipsis")
             }
         }
     }

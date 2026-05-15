@@ -13,15 +13,20 @@ struct TalkeeApp: App {
 
     @State private var downloads = ModelDownloadCoordinator()
     @AppStorage("Talkee.hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("selectedLanguageCode") private var selectedLanguageCode: String = ""
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            TalkNowView()
                 .environment(downloads)
                 .task(id: hasCompletedOnboarding) {
                     if hasCompletedOnboarding {
-                        await downloads.ensureModels()
+                        await downloads.ensureModels(languageCode: selectedLanguageCode)
                     }
+                }
+                .onChange(of: selectedLanguageCode) { _, newCode in
+                    guard hasCompletedOnboarding else { return }
+                    Task { await downloads.ensureModels(languageCode: newCode) }
                 }
                 .fullScreenCover(isPresented: Binding(
                     get: { !hasCompletedOnboarding },

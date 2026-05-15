@@ -45,11 +45,14 @@ final class ModelDownloadCoordinator {
     static let diarizerKey = "diarizerSortformer"
     private static let downloadedVersionsKey = "Talkee.downloadedModelVersions"
 
-    static func desiredModelVersion() -> AsrModelVersion {
-        switch Locale.current.language.languageCode?.identifier {
-        case "ja": .tdtJa
-        case "zh": .ctcZhCn
-        default:   .v3
+    static func desiredModelVersion(for languageCode: String = "") -> AsrModelVersion {
+        let code = languageCode.isEmpty
+            ? (Locale.current.language.languageCode?.identifier ?? "")
+            : languageCode
+        switch code {
+        case "ja": return .tdtJa
+        case "zh": return .ctcZhCn
+        default:   return .v3
         }
     }
 
@@ -104,8 +107,8 @@ final class ModelDownloadCoordinator {
         }
     }
 
-    func ensureModels() async {
-        let desired = Self.desiredModelVersion()
+    func ensureModels(languageCode: String = "") async {
+        let desired = Self.desiredModelVersion(for: languageCode)
         if models != nil, loadedVersion == desired, case .ready = phase { return }
         if case .preparing = phase { return }
         if case .downloading = phase { return }

@@ -20,7 +20,7 @@ struct WaveformView: View {
                 draw(into: ctx, size: size, now: context.date)
             }
         }
-        .frame(height: 72)
+        .frame(height: 84)
         .opacity(isActive ? 1.0 : 0.35)
         .accessibilityHidden(true)
     }
