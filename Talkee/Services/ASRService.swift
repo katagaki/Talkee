@@ -110,9 +110,6 @@ final class ASRService {
         do {
             let manager = SlidingWindowAsrManager(config: .streaming)
             try await manager.loadModels(models)
-            if let code = effectiveLanguageCode, let lang = Language(rawValue: code) {
-                await manager.setLanguage(lang)
-            }
             try await manager.startStreaming(source: .microphone)
             self.manager = manager
 
