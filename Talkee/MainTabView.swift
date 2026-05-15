@@ -21,7 +21,7 @@ struct MainTabView: View {
                 }
             MoreView()
                 .tabItem {
-                    Label("Tab.More", systemImage: "ellipsis")
+                    Label("Tab.Settings", systemImage: "gear")
                 }
         }
     }

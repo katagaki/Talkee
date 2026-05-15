@@ -13,6 +13,8 @@ struct TalkNowView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(ModelDownloadCoordinator.self) private var downloads
     @State private var service = ASRService()
+    @State private var showRecordingContent = false
+    @Namespace private var glassNamespace
 
     var body: some View {
         NavigationStack {
@@ -39,6 +41,20 @@ struct TalkNowView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 12)
             }
+            .onChange(of: service.isRecording) { _, isRecording in
+                if isRecording {
+                    Task {
+                        try? await Task.sleep(for: .seconds(0.35))
+                        withAnimation(.smooth.speed(2.0)) {
+                            showRecordingContent = true
+                        }
+                    }
+                } else {
+                    withAnimation(.smooth.speed(2.0)) {
+                        showRecordingContent = false
+                    }
+                }
+            }
             .navigationTitle("Tab.TalkNow")
             .toolbarTitleDisplayMode(.inlineLarge)
         }
@@ -55,25 +71,26 @@ struct TalkNowView: View {
     }
 
     private var recordingSection: some View {
-        VStack(spacing: 12) {
-            if service.isRecording {
-                Label("TalkNow.Listening", systemImage: "waveform")
-                    .font(.subheadline)
-                    .foregroundStyle(.red)
-                    .symbolEffect(.variableColor.iterative.reversing)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
-
-                WaveformView(samples: service.waveformLevels, isActive: true)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 8) {
+                if service.isRecording {
+                    Group {
+                        if showRecordingContent {
+                            WaveformView(samples: service.waveformLevels, isActive: true)
+                                .transition(.opacity)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 72)
+                    .padding(.horizontal, 12)
+                    .glassEffect(.regular.tint(.black), in: Capsule())
+                    .glassEffectID("panel", in: glassNamespace)
+                    .glassEffectTransition(.matchedGeometry)
+                }
+                micStopButton(in: glassNamespace)
             }
-
-            primaryButton
         }
-        .padding(service.isRecording ? 16 : 8)
-        .frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: 32))
-        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: service.isRecording)
+        .frame(maxWidth: .infinity, alignment: .center)
+        .animation(.smooth.speed(2.0), value: service.isRecording)
     }
 
     private struct SpeakerTurn: Identifiable {
@@ -136,20 +153,41 @@ struct TalkNowView: View {
         return palette[index % palette.count]
     }
 
-    private var primaryButton: some View {
-        Button {
+    private func micStopButton(in namespace: Namespace.ID) -> some View {
+        let buttonGlass: Glass = showRecordingContent
+            ? Glass.regular.tint(.red).interactive()
+            : Glass.regular.tint(.accentColor).interactive()
+
+        return Button {
             Task { await togglePressed() }
         } label: {
-            Image(systemName: service.isRecording ? "stop.fill" : "mic.fill")
-                .font(.title2)
-                .frame(width: 56, height: 56)
-                .accessibilityLabel(service.isRecording ? "TalkNow.Stop" : "TalkNow.Start")
+            Group {
+                if isLoading {
+                    ProgressView()
+                        .labelsHidden()
+                        .tint(.white)
+                        .transition(.opacity)
+                } else {
+                    Image(systemName: showRecordingContent ? "stop.fill" : "mic.fill")
+                        .font(.system(size: 28, weight: .regular))
+                        .foregroundStyle(Color.white)
+                        .contentTransition(.symbolEffect(.replace))
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 72, height: 72)
+            .animation(.smooth.speed(2.0), value: isLoading)
+            .accessibilityLabel(isLoading ? "TalkNow.Loading" : (service.isRecording ? "TalkNow.Stop" : "TalkNow.Start"))
         }
-        .buttonStyle(.borderedProminent)
-        .tint(service.isRecording ? .red : .accentColor)
-        .controlSize(.extraLarge)
-        .buttonBorderShape(.circle)
-        .disabled(!downloadIsReady || service.state == .starting || service.state == .stopping)
+        .buttonStyle(.plain)
+        .glassEffect(buttonGlass, in: Circle())
+        .glassEffectID("button", in: namespace)
+        .contentShape(Circle())
+        .disabled(isLoading)
+    }
+
+    private var isLoading: Bool {
+        !downloadIsReady || service.state == .starting || service.state == .stopping
     }
 
     private var downloadIsReady: Bool {

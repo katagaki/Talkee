@@ -12,7 +12,7 @@ struct WaveformView: View {
     let samples: [ASRService.LevelSample]
     var isActive: Bool = true
     var barWidth: CGFloat = 3
-    var barSpacing: CGFloat = 2
+    var barSpacing: CGFloat = 1
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
@@ -20,7 +20,7 @@ struct WaveformView: View {
                 draw(into: ctx, size: size, now: context.date)
             }
         }
-        .frame(height: 64)
+        .frame(height: 72)
         .opacity(isActive ? 1.0 : 0.35)
         .accessibilityHidden(true)
     }

@@ -596,6 +596,40 @@
         }
       }
     },
+    "Settings.Models" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Models"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "モデル"
+          }
+        }
+      }
+    },
+    "Settings.Models.Download" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Download"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダウンロード"
+          }
+        }
+      }
+    },
     "Speaker.Numbered" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -919,19 +953,19 @@
         }
       }
     },
-    "Tab.More" : {
+    "Tab.Settings" : {
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "More"
+            "value" : "Settings"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "その他"
+            "value" : "設定"
           }
         }
       }
@@ -1017,6 +1051,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "開始"
+          }
+        }
+      }
+    },
+    "TalkNow.Loading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み込み中"
           }
         }
       }
