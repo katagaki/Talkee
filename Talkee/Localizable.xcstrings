@@ -623,7 +623,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Identify speakers"
+            "value" : "Speaker Diarization"
           }
         },
         "ja" : {
