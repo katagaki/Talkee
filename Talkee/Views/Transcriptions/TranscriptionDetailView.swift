@@ -106,6 +106,7 @@ struct TranscriptionDetailView: View {
             ForEach(sortedBlocks) { block in
                 Text(block.text)
                     .font(.body)
+                    .textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -153,6 +154,7 @@ struct TranscriptionDetailView: View {
 
             Text(turn.text)
                 .font(.body)
+                .textSelection(.enabled)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
