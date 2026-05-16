@@ -7,6 +7,7 @@
 
 import SwiftData
 import SwiftUI
+import UIKit
 
 struct TalkNowView: View {
 
@@ -105,6 +106,25 @@ struct TalkNowView: View {
                 ManageModelsView()
                     .environment(downloads)
             }
+            .alert(
+                "TalkNow.Error.Title",
+                isPresented: Binding(
+                    get: { service.lastErrorMessage != nil },
+                    set: { if !$0 { service.lastErrorMessage = nil } }
+                ),
+                actions: {
+                    if service.lastErrorNeedsSettings,
+                       let url = URL(string: UIApplication.openSettingsURLString) {
+                        Button("TalkNow.Error.OpenSettings") {
+                            openURL(url)
+                        }
+                    }
+                    Button("OK", role: .cancel) { }
+                },
+                message: {
+                    Text(service.lastErrorMessage ?? "")
+                }
+            )
         }
     }
 

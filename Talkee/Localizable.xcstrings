@@ -1059,6 +1059,57 @@
         }
       }
     },
+    "TalkNow.Error.MicrophoneDenied" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Talkee needs access to the microphone to transcribe speech. Enable it in Settings to continue."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声を文字起こしするには、マイクへのアクセスが必要です。「設定」から有効にしてください。"
+          }
+        }
+      }
+    },
+    "TalkNow.Error.OpenSettings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定を開く"
+          }
+        }
+      }
+    },
+    "TalkNow.Error.Title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't start recording"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "録音を開始できません"
+          }
+        }
+      }
+    },
     "TalkNow.IdlePrompt" : {
       "extractionState" : "manual",
       "localizations" : {
