@@ -28,7 +28,6 @@ struct MoreAttributionsView: View {
     }
 }
 
-// swiftlint:disable line_length
 private struct Dependency: Identifiable {
     let id: String
     let name: String
@@ -248,4 +247,3 @@ private struct Dependency: Identifiable {
 """)
     ]
 }
-// swiftlint:enable line_length

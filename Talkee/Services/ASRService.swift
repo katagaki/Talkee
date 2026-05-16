@@ -5,6 +5,7 @@
 //  Created by シン・ジャスティン on 2026/05/09.
 //
 
+// swiftlint:disable file_length
 import AVFoundation
 import FluidAudio
 import Foundation
@@ -12,6 +13,7 @@ import SwiftData
 
 @MainActor
 @Observable
+// swiftlint:disable:next type_body_length
 final class ASRService {
 
     enum State: Equatable {
@@ -76,6 +78,7 @@ final class ASRService {
         return false
     }
 
+    // swiftlint:disable:next function_body_length cyclomatic_complexity
     func start(
         in context: ModelContext,
         models: AsrModels,
@@ -117,8 +120,8 @@ final class ASRService {
         diarizerSegments.removeAll()
         let now = Date.now
         let priming = max(2, Self.maxWaveformLevels)
-        waveformLevels = (0..<priming).map { i in
-            let age = Self.primingWindowSeconds * Double(priming - 1 - i) / Double(priming - 1)
+        waveformLevels = (0..<priming).map { idx in
+            let age = Self.primingWindowSeconds * Double(priming - 1 - idx) / Double(priming - 1)
             return LevelSample(id: UUID(), value: 0, recordedAt: now.addingTimeInterval(-age))
         }
 
@@ -173,6 +176,7 @@ final class ASRService {
         }
     }
 
+    // swiftlint:disable function_body_length
     @discardableResult
     func stop() async -> PersistentIdentifier? {
         guard case .recording = state else { return nil }
@@ -238,6 +242,7 @@ final class ASRService {
 
         return savedID
     }
+    // swiftlint:enable function_body_length
 
     private func teardown() async {
         audioEngine.inputNode.removeTap(onBus: 0)
@@ -334,8 +339,8 @@ final class ASRService {
         let count = values.count
         let perChunk = Self.bufferSeconds / Double(count)
         var next = waveformLevels
-        for (i, value) in values.enumerated() {
-            let offset = Double(count - 1 - i) * perChunk
+        for (idx, value) in values.enumerated() {
+            let offset = Double(count - 1 - idx) * perChunk
             next.append(LevelSample(
                 id: UUID(),
                 value: value,
@@ -377,9 +382,9 @@ final class ASRService {
             guard start < end else { break }
 
             var sumSquares: Float = 0
-            for i in start..<end {
-                let v = channel[i]
-                sumSquares += v * v
+            for sampleIdx in start..<end {
+                let sample = channel[sampleIdx]
+                sumSquares += sample * sample
             }
             let rms = sqrt(sumSquares / Float(end - start))
             // Perceptual scaling: speech RMS is typically 0.01–0.2.

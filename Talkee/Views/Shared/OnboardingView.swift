@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 
+// swiftlint:disable:next type_body_length
 struct OnboardingView: View {
 
     @Environment(ModelDownloadCoordinator.self) private var downloads
@@ -106,8 +107,7 @@ struct OnboardingView: View {
         let isOn = Binding(
             get: { selectedIDs.contains(option.id) },
             set: { newValue in
-                if newValue { selectedIDs.insert(option.id) }
-                else { selectedIDs.remove(option.id) }
+                if newValue { selectedIDs.insert(option.id) } else { selectedIDs.remove(option.id) }
             }
         )
 
@@ -168,7 +168,7 @@ struct OnboardingView: View {
     private var versionGroup: some View {
         let rows = progressRows
         return VStack(spacing: 16) {
-            ForEach(Array(rows.enumerated()), id: \.element.key) { index, row in
+            ForEach(Array(rows.enumerated()), id: \.element.key) { _, row in
                 progressRowView(row)
             }
         }

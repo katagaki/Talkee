@@ -152,8 +152,7 @@ final class ModelDownloadCoordinator {
         await ensureModels()
     }
 
-    /// Used by onboarding to download a user-selected set of models in sequence.
-    /// When `includeDiarizer` is true, also fetches the Sortformer streaming diarizer.
+    // swiftlint:disable:next function_body_length cyclomatic_complexity
     func downloadVersions(_ versions: [AsrModelVersion], includeDiarizer: Bool = false) async {
         guard !isBatchInProgress, !versions.isEmpty || includeDiarizer else { return }
         isBatchInProgress = true

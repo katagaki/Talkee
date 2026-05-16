@@ -49,24 +49,24 @@ struct WaveformView: View {
         var buckets: [Int: Path] = [:]
         let bucketCount = 8
 
-        for (i, sample) in recent.enumerated() {
-            let positionFromRight = recent.count - 1 - i
-            let x = size.width - halfBar - CGFloat(positionFromRight) * slotStride - scrollOffset
+        for (barIndex, sample) in recent.enumerated() {
+            let positionFromRight = recent.count - 1 - barIndex
+            let xPos = size.width - halfBar - CGFloat(positionFromRight) * slotStride - scrollOffset
 
-            if x + halfBar < 0 { continue }
-            if x - halfBar > size.width { continue }
+            if xPos + halfBar < 0 { continue }
+            if xPos - halfBar > size.width { continue }
 
-            let leftFade = min(1, max(0, x / fadeWidth))
-            let rightFade = min(1, max(0, (size.width - x) / fadeWidth))
+            let leftFade = min(1, max(0, xPos / fadeWidth))
+            let rightFade = min(1, max(0, (size.width - xPos) / fadeWidth))
             let opacity = Double(leftFade * rightFade)
             guard opacity > 0.01 else { continue }
 
-            let h = max(minBarHeight, CGFloat(sample.value) * maxBarHeight)
+            let barHeight = max(minBarHeight, CGFloat(sample.value) * maxBarHeight)
             let rect = CGRect(
-                x: x - halfBar,
-                y: centerY - h / 2,
+                x: xPos - halfBar,
+                y: centerY - barHeight / 2,
                 width: barWidth,
-                height: h
+                height: barHeight
             )
 
             let bucket = min(bucketCount - 1, Int(opacity * Double(bucketCount)))
@@ -88,10 +88,10 @@ struct WaveformView: View {
         var pairs = 0
         var prev: ASRService.LevelSample?
         for sample in tail {
-            if let p = prev {
-                let dt = sample.recordedAt.timeIntervalSince(p.recordedAt)
-                if dt > 0 {
-                    total += dt
+            if let prevSample = prev {
+                let delta = sample.recordedAt.timeIntervalSince(prevSample.recordedAt)
+                if delta > 0 {
+                    total += delta
                     pairs += 1
                 }
             }

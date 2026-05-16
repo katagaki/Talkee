@@ -9,6 +9,7 @@ import SwiftData
 import SwiftUI
 import UIKit
 
+// swiftlint:disable:next type_body_length
 struct TalkNowView: View {
 
     @Environment(\.modelContext) private var modelContext
@@ -158,7 +159,7 @@ struct TalkNowView: View {
         LanguageOption(code: "uk", name: "Українська"),
         LanguageOption(code: "be", name: "Беларуская"),
         LanguageOption(code: "bg", name: "Български"),
-        LanguageOption(code: "sr", name: "Српски"),
+        LanguageOption(code: "sr", name: "Српски")
     ]
 
     private var currentLanguageName: String {
@@ -324,7 +325,9 @@ struct TalkNowView: View {
             }
             .frame(width: 84, height: 84)
             .animation(.smooth.speed(2.0), value: isLoading)
-            .accessibilityLabel(isLoading ? "TalkNow.Loading" : (service.isRecording ? "TalkNow.Stop" : "TalkNow.Start"))
+            .accessibilityLabel(
+                isLoading ? "TalkNow.Loading" : (service.isRecording ? "TalkNow.Stop" : "TalkNow.Start")
+            )
         }
         .buttonStyle(.plain)
         .glassEffect(buttonGlass, in: Circle())
