@@ -27,6 +27,8 @@ final class ASRService {
     var volatileText: String = ""
     var currentTitle: String = ""
     var waveformLevels: [LevelSample] = []
+    var lastErrorMessage: String?
+    var lastErrorNeedsSettings: Bool = false
 
     private(set) var diarizerSegments: [DiarizerSegment] = []
     var hasDiarizer: Bool { diarizer != nil }
@@ -81,6 +83,31 @@ final class ASRService {
         languageCode: String? = nil
     ) async {
         guard case .idle = state else { return }
+        lastErrorMessage = nil
+        lastErrorNeedsSettings = false
+
+        // Microphone access must be granted explicitly on device — without it,
+        // AVAudioEngine starts but the input node produces no samples.
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            break
+        case .denied:
+            lastErrorMessage = String(localized: "TalkNow.Error.MicrophoneDenied")
+            lastErrorNeedsSettings = true
+            return
+        case .undetermined:
+            let granted = await AVAudioApplication.requestRecordPermission()
+            if !granted {
+                lastErrorMessage = String(localized: "TalkNow.Error.MicrophoneDenied")
+                lastErrorNeedsSettings = true
+                return
+            }
+        @unknown default:
+            lastErrorMessage = String(localized: "TalkNow.Error.MicrophoneDenied")
+            lastErrorNeedsSettings = true
+            return
+        }
+
         state = .starting
         liveBlocks.removeAll()
         volatileText = ""
@@ -131,8 +158,18 @@ final class ASRService {
             idleTimerHeld = true
             state = .recording
         } catch {
-            state = .failed(message: error.localizedDescription)
+            lastErrorMessage = error.localizedDescription
             await teardown()
+            if let context = modelContext,
+               let id = currentTranscriptionID,
+               let transcription = context.model(for: id) as? Transcription {
+                context.delete(transcription)
+                try? context.save()
+            }
+            currentTranscriptionID = nil
+            liveBlocks.removeAll()
+            volatileText = ""
+            state = .idle
         }
     }
 
