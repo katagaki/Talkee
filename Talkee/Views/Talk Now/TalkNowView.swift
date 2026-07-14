@@ -36,12 +36,21 @@ struct TalkNowView: View {
                                 speakerBubble(turn)
                                     .id(turn.anchorID)
                             }
+                            if !service.volatileText.isEmpty {
+                                volatileBubble(service.volatileText)
+                                    .id("volatile")
+                            }
                         }
                         .padding(.horizontal)
                     }
                     .defaultScrollAnchor(.bottom)
                     .onChange(of: service.liveBlocks.count) { _, _ in
                         scrollToBottom(proxy)
+                    }
+                    .onChange(of: service.volatileText) { _, _ in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo("volatile", anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -133,34 +142,7 @@ struct TalkNowView: View {
         !service.isRecording && service.liveBlocks.isEmpty
     }
 
-    private struct LanguageOption {
-        let code: String
-        let name: String
-    }
-
-    private let languages = [
-        LanguageOption(code: "", name: "Auto"),
-        LanguageOption(code: "ja", name: "日本語"),
-        LanguageOption(code: "zh", name: "中文"),
-        LanguageOption(code: "en", name: "English"),
-        LanguageOption(code: "es", name: "Español"),
-        LanguageOption(code: "fr", name: "Français"),
-        LanguageOption(code: "de", name: "Deutsch"),
-        LanguageOption(code: "it", name: "Italiano"),
-        LanguageOption(code: "pt", name: "Português"),
-        LanguageOption(code: "ro", name: "Română"),
-        LanguageOption(code: "pl", name: "Polski"),
-        LanguageOption(code: "cs", name: "Čeština"),
-        LanguageOption(code: "sk", name: "Slovenčina"),
-        LanguageOption(code: "sl", name: "Slovenščina"),
-        LanguageOption(code: "hr", name: "Hrvatski"),
-        LanguageOption(code: "bs", name: "Bosanski"),
-        LanguageOption(code: "ru", name: "Русский"),
-        LanguageOption(code: "uk", name: "Українська"),
-        LanguageOption(code: "be", name: "Беларуская"),
-        LanguageOption(code: "bg", name: "Български"),
-        LanguageOption(code: "sr", name: "Српски")
-    ]
+    private let languages = LanguageOption.all
 
     private var currentLanguageName: String {
         languages.first(where: { $0.code == selectedLanguageCode })?.name ?? "Auto"
@@ -290,6 +272,16 @@ struct TalkNowView: View {
         .frame(maxWidth: .infinity, alignment: frameAlignment)
     }
 
+    private func volatileBubble(_ text: String) -> some View {
+        Text(text)
+            .font(.body)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func speakerLabel(for index: Int?) -> String {
         guard let index else { return String(localized: "Speaker.Unknown") }
         return String(format: String(localized: "Speaker.Numbered"), index + 1)
@@ -352,10 +344,15 @@ struct TalkNowView: View {
                let transcription = modelContext.model(for: id) as? Transcription {
                 navigateToTranscription = transcription
             }
-        } else if let models = downloads.models {
+        } else if let shared = downloads.sharedModels {
             let diarizer = await downloads.ensureDiarizer()
             let langCode = selectedLanguageCode.isEmpty ? nil : selectedLanguageCode
-            await service.start(in: modelContext, models: models, diarizerModels: diarizer, languageCode: langCode)
+            await service.start(
+                in: modelContext,
+                sharedModels: shared,
+                diarizerModels: diarizer,
+                languageCode: langCode
+            )
         }
     }
 

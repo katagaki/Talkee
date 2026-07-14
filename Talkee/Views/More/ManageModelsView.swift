@@ -37,8 +37,8 @@ struct ManageModelsView: View {
 
     @ViewBuilder
     private func modelRow(_ option: ModelOption) -> some View {
-        let key = ModelDownloadCoordinator.versionKey(option.version)
-        let isDownloaded = downloads.isDownloaded(option.version)
+        let key = option.id
+        let isDownloaded = downloads.isDownloaded(option.id)
         let phase = downloads.batchPhase[key]
         let isActive = phase == .pending || phase == .downloading || phase == .compiling
 
@@ -57,7 +57,7 @@ struct ManageModelsView: View {
                 ProgressView()
             } else {
                 Button("Settings.Models.Download") {
-                    Task { await downloads.downloadVersions([option.version]) }
+                    Task { await downloads.downloadItems([option.id]) }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
@@ -86,7 +86,7 @@ struct ManageModelsView: View {
                 ProgressView()
             } else {
                 Button("Settings.Models.Download") {
-                    Task { await downloads.downloadVersions([], includeDiarizer: true) }
+                    Task { await downloads.downloadItems([], includeDiarizer: true) }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

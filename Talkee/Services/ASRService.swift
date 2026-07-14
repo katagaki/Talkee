@@ -39,13 +39,16 @@ final class ASRService {
     private static let chunksPerBuffer = 4
     private static let bufferSeconds: Double = 0.1
     private static let primingWindowSeconds: Double = 2.0
+    private static let wordBoundary = "\u{2581}"
+    private static let snapshotIntervalSeconds: Double = 3
 
     private let audioEngine = AVAudioEngine()
-    private var manager: SlidingWindowAsrManager?
-    private var updatesTask: Task<Void, Never>?
+    private var manager: StreamingNemotronMultilingualAsrManager?
+    private var audioContinuation: AsyncStream<SendableBufferRef>.Continuation?
+    private var audioFeedTask: Task<Void, Never>?
+    private var snapshotTask: Task<Void, Never>?
     private var currentTranscriptionID: PersistentIdentifier?
     private var modelContext: ModelContext?
-    private var nextBlockIndex: Int = 0
     private var sessionStart: Date = .now
     private var idleTimerHeld: Bool = false
 
@@ -81,7 +84,7 @@ final class ASRService {
     // swiftlint:disable:next function_body_length cyclomatic_complexity
     func start(
         in context: ModelContext,
-        models: AsrModels,
+        sharedModels: SharedNemotronMultilingualModels,
         diarizerModels: SortformerModels? = nil,
         languageCode: String? = nil
     ) async {
@@ -114,7 +117,6 @@ final class ASRService {
         state = .starting
         liveBlocks.removeAll()
         volatileText = ""
-        nextBlockIndex = 0
         sessionStart = .now
         modelContext = context
         diarizerSegments.removeAll()
@@ -138,28 +140,26 @@ final class ASRService {
         currentTitle = title
 
         do {
-            let manager = SlidingWindowAsrManager(config: .streaming)
-            try await manager.loadModels(models)
-            try await manager.startStreaming(source: .microphone)
+            let manager = StreamingNemotronMultilingualAsrManager()
+            try await manager.loadFromShared(sharedModels)
+            await manager.setLanguage(languageCode)
+            await manager.setPartialCallback { [weak self] text in
+                Task { @MainActor in self?.updatePartial(text) }
+            }
             self.manager = manager
 
             if let diarizerModels {
                 setupDiarizer(models: diarizerModels)
             }
 
+            installAudioFeed(manager)
             try configureAudioSession()
-            try installTapAndStartEngine(into: manager)
-
-            updatesTask = Task { [weak self] in
-                guard let stream = await self?.manager?.transcriptionUpdates else { return }
-                for await update in stream {
-                    self?.handle(update)
-                }
-            }
+            try installTapAndStartEngine()
 
             IdleTimer.acquire()
             idleTimerHeld = true
             state = .recording
+            startSnapshotLoop()
         } catch {
             lastErrorMessage = error.localizedDescription
             await teardown()
@@ -176,15 +176,24 @@ final class ASRService {
         }
     }
 
-    // swiftlint:disable function_body_length
+    // swiftlint:disable function_body_length cyclomatic_complexity
     @discardableResult
     func stop() async -> PersistentIdentifier? {
         guard case .recording = state else { return nil }
         state = .stopping
 
+        snapshotTask?.cancel()
+        await snapshotTask?.value
+        snapshotTask = nil
+
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+
+        audioContinuation?.finish()
+        audioContinuation = nil
+        await audioFeedTask?.value
+        audioFeedTask = nil
 
         diarizerContinuation?.finish()
         diarizerContinuation = nil
@@ -201,25 +210,19 @@ final class ASRService {
         }
         diarizer = nil
 
-        let pendingVolatile = volatileText
         if let manager {
-            _ = try? await manager.finish()
+            if let result = try? await manager.finishWithTokenTimings() {
+                persistBlocks(text: result.text, timings: result.timings)
+            }
             await manager.cleanup()
         }
-        if !pendingVolatile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            appendBlock(text: pendingVolatile, confidence: 0)
-        }
-
-        updatesTask?.cancel()
-        updatesTask = nil
         manager = nil
 
         let savedID: PersistentIdentifier?
-        if let context = modelContext, let id = currentTranscriptionID {
-            if liveBlocks.isEmpty {
-                if let transcription = context.model(for: id) as? Transcription {
-                    context.delete(transcription)
-                }
+        if let context = modelContext, let id = currentTranscriptionID,
+           let transcription = context.model(for: id) as? Transcription {
+            if transcription.blocks.isEmpty {
+                context.delete(transcription)
                 try? context.save()
                 savedID = nil
             } else {
@@ -242,12 +245,20 @@ final class ASRService {
 
         return savedID
     }
-    // swiftlint:enable function_body_length
+    // swiftlint:enable function_body_length cyclomatic_complexity
 
     private func teardown() async {
+        snapshotTask?.cancel()
+        await snapshotTask?.value
+        snapshotTask = nil
         audioEngine.inputNode.removeTap(onBus: 0)
         audioEngine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+
+        audioContinuation?.finish()
+        audioContinuation = nil
+        await audioFeedTask?.value
+        audioFeedTask = nil
 
         diarizerContinuation?.finish()
         diarizerContinuation = nil
@@ -260,8 +271,6 @@ final class ASRService {
             await manager.cleanup()
         }
         manager = nil
-        updatesTask?.cancel()
-        updatesTask = nil
 
         if idleTimerHeld {
             IdleTimer.release()
@@ -273,6 +282,18 @@ final class ASRService {
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.duckOthers, .defaultToSpeaker])
         try session.setActive(true, options: [])
+    }
+
+    private func installAudioFeed(_ manager: StreamingNemotronMultilingualAsrManager) {
+        let (stream, continuation) = AsyncStream<SendableBufferRef>.makeStream(
+            bufferingPolicy: .unbounded
+        )
+        audioContinuation = continuation
+        audioFeedTask = Task {
+            for await item in stream {
+                _ = try? await manager.process(audioBuffer: item.buffer)
+            }
+        }
     }
 
     private func setupDiarizer(models: SortformerModels) {
@@ -304,7 +325,7 @@ final class ASRService {
         }
     }
 
-    private func installTapAndStartEngine(into manager: SlidingWindowAsrManager) throws {
+    private func installTapAndStartEngine() throws {
         let inputNode = audioEngine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
         let bufferSize = AVAudioFrameCount(inputFormat.sampleRate / 10)
@@ -312,7 +333,6 @@ final class ASRService {
         let diarizerWantsAudio = (diarizer != nil)
 
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
-            let wrapper = SendableBufferRef(buffer: buffer)
             let chunkLevels = Self.computeChunkLevels(from: buffer, chunks: Self.chunksPerBuffer)
             let monoSamples = diarizerWantsAudio
                 ? Self.extractMonoSamples(from: buffer)
@@ -321,8 +341,8 @@ final class ASRService {
             Task { @MainActor [weak self] in
                 self?.appendWaveformLevels(chunkLevels)
             }
-            Task {
-                await manager.streamAudio(wrapper.buffer)
+            if let copy = Self.copyBuffer(buffer) {
+                self?.audioContinuation?.yield(SendableBufferRef(buffer: copy))
             }
             if diarizerWantsAudio, !monoSamples.isEmpty {
                 self?.diarizerContinuation?.yield(AudioChunk(samples: monoSamples, sampleRate: captureRate))
@@ -331,6 +351,27 @@ final class ASRService {
 
         audioEngine.prepare()
         try audioEngine.start()
+    }
+
+    private func updatePartial(_ text: String) {
+        volatileText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func startSnapshotLoop() {
+        snapshotTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(Self.snapshotIntervalSeconds))
+                if Task.isCancelled { break }
+                await self?.snapshotDraft()
+            }
+        }
+    }
+
+    private func snapshotDraft() async {
+        guard case .recording = state, let manager else { return }
+        let text = await manager.getPartialTranscript()
+        let timings = await manager.getTokenTimings()
+        persistBlocks(text: text, timings: timings)
     }
 
     private func appendWaveformLevels(_ values: [Float]) {
@@ -355,6 +396,22 @@ final class ASRService {
 
     private func appendFinalizedSegments(_ segments: [DiarizerSegment]) {
         diarizerSegments.append(contentsOf: segments)
+    }
+
+    nonisolated private static func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(
+            pcmFormat: buffer.format,
+            frameCapacity: buffer.frameCapacity
+        ) else { return nil }
+        copy.frameLength = buffer.frameLength
+        let frames = Int(buffer.frameLength)
+        guard frames > 0,
+              let src = buffer.floatChannelData,
+              let dst = copy.floatChannelData else { return nil }
+        for channel in 0..<Int(buffer.format.channelCount) {
+            dst[channel].update(from: src[channel], count: frames)
+        }
+        return copy
     }
 
     nonisolated private static func extractMonoSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -395,79 +452,93 @@ final class ASRService {
         return levels
     }
 
-    private func handle(_ update: SlidingWindowTranscriptionUpdate) {
-        if update.isConfirmed {
-            let speaker = dominantSpeaker(forTokenTimings: update.tokenTimings)
-            appendBlock(
-                text: update.text,
-                confidence: update.confidence,
-                timestamp: update.timestamp,
-                speakerIndex: speaker
-            )
-            // Volatile text typically already contains content past the confirmed boundary;
-            // reset it so the UI doesn't show duplicate prefix until the next volatile update.
-            volatileText = ""
-        } else {
-            volatileText = update.text
-        }
+    private struct BlockSpec {
+        let text: String
+        let speaker: Int?
     }
 
-    private func dominantSpeaker(forTokenTimings timings: [TokenTiming]) -> Int? {
-        guard hasDiarizer, !timings.isEmpty, !diarizerSegments.isEmpty else { return nil }
-        let startSec = timings.map(\.startTime).min() ?? 0
-        let endSec = timings.map(\.endTime).max() ?? 0
-        guard endSec > startSec else { return nil }
+    private func blockSpecs(text: String, timings: [TokenTiming]) -> [BlockSpec] {
+        let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard hasDiarizer, !diarizerSegments.isEmpty, !timings.isEmpty else {
+            return clean.isEmpty ? [] : [BlockSpec(text: clean, speaker: nil)]
+        }
 
+        var specs: [BlockSpec] = []
+        var currentSpeaker: Int?
+        var currentTokens: [String] = []
+        var haveGroup = false
+
+        func flush() {
+            guard haveGroup else { return }
+            let grouped = detokenize(currentTokens)
+            if !grouped.isEmpty {
+                specs.append(BlockSpec(text: grouped, speaker: currentSpeaker))
+            }
+            currentTokens.removeAll()
+            haveGroup = false
+        }
+
+        for timing in timings {
+            let speaker = dominantSpeaker(inRange: timing.startTime, to: timing.endTime)
+            if haveGroup, speaker != currentSpeaker { flush() }
+            currentSpeaker = speaker
+            currentTokens.append(timing.token)
+            haveGroup = true
+        }
+        flush()
+
+        if specs.isEmpty, !clean.isEmpty {
+            specs.append(BlockSpec(text: clean, speaker: nil))
+        }
+        return specs
+    }
+
+    /// Rebuilds the persisted transcript from the latest streaming snapshot.
+    /// Called on an interval while recording and once more on stop, so an
+    /// interrupted session keeps its most recent transcript.
+    private func persistBlocks(text: String, timings: [TokenTiming]) {
+        guard let context = modelContext,
+              let id = currentTranscriptionID,
+              let transcription = context.model(for: id) as? Transcription else { return }
+
+        let specs = blockSpecs(text: text, timings: timings)
+        for block in transcription.blocks {
+            context.delete(block)
+        }
+        transcription.blocks.removeAll()
+        for (index, spec) in specs.enumerated() {
+            let block = TranscriptionBlock(
+                index: index,
+                text: spec.text,
+                confidence: 1,
+                timestamp: sessionStart,
+                speakerIndex: spec.speaker,
+                parent: transcription
+            )
+            context.insert(block)
+            transcription.blocks.append(block)
+        }
+        try? context.save()
+    }
+
+    private func detokenize(_ tokens: [String]) -> String {
+        tokens.joined()
+            .replacingOccurrences(of: Self.wordBoundary, with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func dominantSpeaker(inRange startSec: Double, to endSec: Double) -> Int? {
+        guard hasDiarizer, !diarizerSegments.isEmpty, endSec > startSec else { return nil }
         var overlapBySpeaker: [Int: Double] = [:]
         for segment in diarizerSegments {
-            let segStart = Double(segment.startTime)
-            let segEnd = Double(segment.endTime)
-            let overlapStart = max(startSec, segStart)
-            let overlapEnd = min(endSec, segEnd)
+            let overlapStart = max(startSec, Double(segment.startTime))
+            let overlapEnd = min(endSec, Double(segment.endTime))
             let overlap = overlapEnd - overlapStart
             if overlap > 0 {
                 overlapBySpeaker[segment.speakerIndex, default: 0] += overlap
             }
         }
         return overlapBySpeaker.max(by: { $0.value < $1.value })?.key
-    }
-
-    private func appendBlock(
-        text: String,
-        confidence: Float,
-        timestamp: Date = .now,
-        speakerIndex: Int? = nil
-    ) {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        let snapshot = BlockSnapshot(
-            id: UUID(),
-            index: nextBlockIndex,
-            text: trimmed,
-            confidence: confidence,
-            timestamp: timestamp,
-            speakerIndex: speakerIndex
-        )
-        liveBlocks.append(snapshot)
-
-        if let context = modelContext,
-           let transcriptionID = currentTranscriptionID,
-           let transcription = context.model(for: transcriptionID) as? Transcription {
-            let block = TranscriptionBlock(
-                index: nextBlockIndex,
-                text: trimmed,
-                confidence: confidence,
-                timestamp: timestamp,
-                speakerIndex: speakerIndex,
-                parent: transcription
-            )
-            context.insert(block)
-            transcription.blocks.append(block)
-            try? context.save()
-        }
-
-        nextBlockIndex += 1
     }
 
     private static func defaultTitle(for date: Date) -> String {

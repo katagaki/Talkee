@@ -1280,6 +1280,40 @@
           }
         }
       }
+    },
+    "Model.Multilingual.Description" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Streams and transcribes 100+ languages live, auto-detecting as you speak."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "100以上の言語をリアルタイムで文字起こしし、話す言語を自動検出します。"
+          }
+        }
+      }
+    },
+    "Model.Multilingual.Name" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Multilingual"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "多言語"
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

@@ -31,10 +31,9 @@ final class ModelDownloadCoordinator {
 
     var phase: Phase = .idle
     var fraction: Double = 0
-    var models: AsrModels?
+    var sharedModels: SharedNemotronMultilingualModels?
     var diarizerModels: SortformerModels?
     var lastError: Error?
-    private(set) var loadedVersion: AsrModelVersion?
 
     var isBatchInProgress: Bool = false
     var batchProgress: [String: Double] = [:]
@@ -42,23 +41,13 @@ final class ModelDownloadCoordinator {
 
     private(set) var downloadedVersions: Set<String> = ModelDownloadCoordinator.loadDownloadedVersions()
 
+    static let asrKey = "asrNemotronMultilingual"
     static let diarizerKey = "diarizerSortformer"
     private static let downloadedVersionsKey = "Talkee.downloadedModelVersions"
 
-    static func desiredModelVersion(for languageCode: String = "") -> AsrModelVersion {
-        let code = languageCode.isEmpty
-            ? (Locale.current.language.languageCode?.identifier ?? "")
-            : languageCode
-        switch code {
-        case "ja": return .tdtJa
-        case "zh": return .ctcZhCn
-        default:   return .v3
-        }
-    }
-
-    static func versionKey(_ version: AsrModelVersion) -> String {
-        String(describing: version)
-    }
+    // The full-vocab multilingual variant auto-detects across 100+ languages.
+    private static let asrLanguageDirectory = "auto"
+    private static let asrChunkMs = 2240
 
     var isFullscreenSheetVisible: Bool {
         switch phase {
@@ -82,13 +71,12 @@ final class ModelDownloadCoordinator {
         }
     }
 
-    func isDownloaded(_ version: AsrModelVersion) -> Bool {
-        downloadedVersions.contains(Self.versionKey(version))
+    func isDownloaded(_ id: String) -> Bool {
+        downloadedVersions.contains(id)
     }
 
-    var isDiarizerDownloaded: Bool {
-        downloadedVersions.contains(Self.diarizerKey)
-    }
+    var isAsrDownloaded: Bool { isDownloaded(Self.asrKey) }
+    var isDiarizerDownloaded: Bool { isDownloaded(Self.diarizerKey) }
 
     /// Loads the diarizer into memory. Skips if already loaded.
     /// Returns the loaded models, or nil if not previously downloaded.
@@ -96,9 +84,7 @@ final class ModelDownloadCoordinator {
         if let diarizerModels { return diarizerModels }
         guard isDiarizerDownloaded else { return nil }
         do {
-            let loaded = try await SortformerModels.loadFromHuggingFace(
-                config: .default
-            )
+            let loaded = try await SortformerModels.loadFromHuggingFace(config: .default)
             self.diarizerModels = loaded
             return loaded
         } catch {
@@ -107,14 +93,13 @@ final class ModelDownloadCoordinator {
         }
     }
 
-    func ensureModels(languageCode: String = "") async {
-        let desired = Self.desiredModelVersion(for: languageCode)
-        if models != nil, loadedVersion == desired, case .ready = phase { return }
+    func ensureModels() async {
+        if sharedModels != nil, case .ready = phase { return }
         if case .preparing = phase { return }
         if case .downloading = phase { return }
         if case .compiling = phase { return }
 
-        let isCached = isDownloaded(desired)
+        let isCached = isAsrDownloaded
 
         IdleTimer.acquire()
         if !isCached {
@@ -124,19 +109,18 @@ final class ModelDownloadCoordinator {
         lastError = nil
 
         do {
-            let loaded = try await AsrModels.downloadAndLoad(
-                version: desired,
+            self.sharedModels = try await StreamingNemotronMultilingualAsrManager.downloadAndPreloadShared(
+                languageCode: Self.asrLanguageDirectory,
+                chunkMs: Self.asrChunkMs,
                 progressHandler: { progress in
                     Task { @MainActor in
                         self.apply(progress, suppressSheet: isCached)
                     }
                 }
             )
-            self.models = loaded
-            self.loadedVersion = desired
             self.fraction = 1
             self.phase = .ready
-            self.markDownloaded(desired)
+            self.markDownloaded(Self.asrKey)
         } catch {
             self.lastError = error
             self.phase = .failed(message: error.localizedDescription)
@@ -147,94 +131,73 @@ final class ModelDownloadCoordinator {
 
     func retry() async {
         phase = .idle
-        models = nil
-        loadedVersion = nil
+        sharedModels = nil
         await ensureModels()
     }
 
-    // swiftlint:disable:next function_body_length cyclomatic_complexity
-    func downloadVersions(_ versions: [AsrModelVersion], includeDiarizer: Bool = false) async {
-        guard !isBatchInProgress, !versions.isEmpty || includeDiarizer else { return }
+    func downloadItems(_ ids: [String], includeDiarizer: Bool = false) async {
+        let wantsAsr = ids.contains(Self.asrKey)
+        guard !isBatchInProgress, wantsAsr || includeDiarizer else { return }
         isBatchInProgress = true
         IdleTimer.acquire()
 
-        for version in versions {
-            let key = Self.versionKey(version)
-            batchPhase[key] = .pending
-            batchProgress[key] = 0
-        }
-        if includeDiarizer {
-            batchPhase[Self.diarizerKey] = .pending
-            batchProgress[Self.diarizerKey] = 0
-        }
-
-        for version in versions {
-            let key = Self.versionKey(version)
-            batchPhase[key] = .downloading
-            batchProgress[key] = 0
-            do {
-                _ = try await AsrModels.downloadAndLoad(
-                    version: version,
-                    progressHandler: { progress in
-                        Task { @MainActor in
-                            self.batchProgress[key] = progress.fractionCompleted
-                            switch progress.phase {
-                            case .listing, .downloading:
-                                self.batchPhase[key] = .downloading
-                            case .compiling:
-                                self.batchPhase[key] = .compiling
-                            }
-                        }
-                    }
-                )
-                batchProgress[key] = 1
-                batchPhase[key] = .ready
-                markDownloaded(version)
-            } catch {
-                batchPhase[key] = .failed(message: error.localizedDescription)
-            }
-        }
-
-        if includeDiarizer {
-            let key = Self.diarizerKey
-            batchPhase[key] = .downloading
-            batchProgress[key] = 0
-            do {
-                let loaded = try await SortformerModels.loadFromHuggingFace(
-                    config: .default,
-                    progressHandler: { progress in
-                        Task { @MainActor in
-                            self.batchProgress[key] = progress.fractionCompleted
-                            switch progress.phase {
-                            case .listing, .downloading:
-                                self.batchPhase[key] = .downloading
-                            case .compiling:
-                                self.batchPhase[key] = .compiling
-                            }
-                        }
-                    }
-                )
-                self.diarizerModels = loaded
-                batchProgress[key] = 1
-                batchPhase[key] = .ready
-                downloadedVersions.insert(key)
-                UserDefaults.standard.set(
-                    Array(downloadedVersions).sorted(),
-                    forKey: Self.downloadedVersionsKey
-                )
-            } catch {
-                batchPhase[key] = .failed(message: error.localizedDescription)
-            }
-        }
+        if wantsAsr { markPending(Self.asrKey) }
+        if includeDiarizer { markPending(Self.diarizerKey) }
+        if wantsAsr { await downloadASRBatch() }
+        if includeDiarizer { await downloadDiarizerBatch() }
 
         isBatchInProgress = false
         IdleTimer.release()
-
-        // Try to bring the active ASR model online if the desired one was downloaded.
         await ensureModels()
     }
 
-    private func apply(_ progress: DownloadUtils.DownloadProgress, suppressSheet: Bool) {
+    private func markPending(_ key: String) {
+        batchPhase[key] = .pending
+        batchProgress[key] = 0
+    }
+
+    private func trackBatch(_ key: String, _ progress: DownloadProgress) {
+        batchProgress[key] = progress.fractionCompleted
+        switch progress.phase {
+        case .listing, .downloading: batchPhase[key] = .downloading
+        case .compiling: batchPhase[key] = .compiling
+        }
+    }
+
+    private func downloadASRBatch() async {
+        let key = Self.asrKey
+        batchPhase[key] = .downloading
+        do {
+            self.sharedModels = try await StreamingNemotronMultilingualAsrManager.downloadAndPreloadShared(
+                languageCode: Self.asrLanguageDirectory,
+                chunkMs: Self.asrChunkMs,
+                progressHandler: { progress in Task { @MainActor in self.trackBatch(key, progress) } }
+            )
+            batchProgress[key] = 1
+            batchPhase[key] = .ready
+            markDownloaded(key)
+        } catch {
+            batchPhase[key] = .failed(message: error.localizedDescription)
+        }
+    }
+
+    private func downloadDiarizerBatch() async {
+        let key = Self.diarizerKey
+        batchPhase[key] = .downloading
+        do {
+            self.diarizerModels = try await SortformerModels.loadFromHuggingFace(
+                config: .default,
+                progressHandler: { progress in Task { @MainActor in self.trackBatch(key, progress) } }
+            )
+            batchProgress[key] = 1
+            batchPhase[key] = .ready
+            markDownloaded(key)
+        } catch {
+            batchPhase[key] = .failed(message: error.localizedDescription)
+        }
+    }
+
+    private func apply(_ progress: DownloadProgress, suppressSheet: Bool) {
         fraction = progress.fractionCompleted
         if suppressSheet {
             return
@@ -253,8 +216,8 @@ final class ModelDownloadCoordinator {
         Set(UserDefaults.standard.stringArray(forKey: downloadedVersionsKey) ?? [])
     }
 
-    private func markDownloaded(_ version: AsrModelVersion) {
-        downloadedVersions.insert(Self.versionKey(version))
+    private func markDownloaded(_ id: String) {
+        downloadedVersions.insert(id)
         UserDefaults.standard.set(
             Array(downloadedVersions).sorted(),
             forKey: Self.downloadedVersionsKey

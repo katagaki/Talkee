@@ -116,7 +116,7 @@ struct OnboardingView: View {
                 HStack(spacing: 6) {
                     Text(String(localized: option.nameKey))
                         .font(.body.weight(.semibold))
-                    if downloads.isDownloaded(option.version) {
+                    if downloads.isDownloaded(option.id) {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundStyle(.green)
                             .font(.caption)
@@ -185,7 +185,7 @@ struct OnboardingView: View {
     private var progressRows: [ProgressRow] {
         var rows = selectedOptions.map {
             ProgressRow(
-                key: ModelDownloadCoordinator.versionKey($0.version),
+                key: $0.id,
                 title: String(localized: $0.nameKey)
             )
         }
@@ -300,8 +300,8 @@ struct OnboardingView: View {
 
     private func runDownload() async {
         stage = .progress
-        let versions = selectedOptions.map(\.version)
-        await downloads.downloadVersions(versions, includeDiarizer: enableSpeakerDetection)
+        let ids = selectedOptions.map(\.id)
+        await downloads.downloadItems(ids, includeDiarizer: enableSpeakerDetection)
     }
 
     private func complete() {
